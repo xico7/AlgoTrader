@@ -1,18 +1,32 @@
 import asyncio
+import inspect
+import traceback
+
 import argparse_func as argp
-from tasks.parse_alpha import get_alpha
-import tasks.ws_trades_mongodb as tasks_ws
 
-
-PRINT_RUNNING_EXECUTION_EACH_SECONDS = 900
 
 def main():
-    parser_run_arguments = argp.algo_argparse()
-    if parser_run_arguments.run_ws_trades_mongodb:
-        print("here")
-    elif parser_run_arguments.run_alpha_algo:
-        asyncio.run(tasks_ws.main_test())
-    get_alpha()
+    parser = argp.algo_argparse()
+    call = argp.get_execute_function(parser)
+
+    if inspect.iscoroutinefunction(call):
+        asyncio.run(asyncmain(call, parser.debug_secs))
+    else:
+        call()
+
+
+async def asyncmain(func, *args):
+    while True:
+        try:
+            await func(*args)
+        except Exception as e:
+            traceback.print_exc()
+            print(f"{e}")
+            exit(1)
 
 
 main()
+
+
+
+

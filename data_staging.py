@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import MongoDB.db_actions as mongo
 import copy
 import re
@@ -8,9 +10,6 @@ from enum import Enum
 import numpy as np
 import talib
 from numpy import double
-
-from tasks.ws_trades_mongodb import OHLC_CACHE_PERIODS, REL_STRENGTH_PERIODS
-from tasks.ta_signal import RS_THRESHOLD, RS_SANITY_VALUE_THRESHOLD
 
 
 #### OHLC ####
@@ -36,6 +35,7 @@ ONE_DAY_IN_SECS = ONE_HOUR_IN_SECS * 24
 
 ###################
 
+USDT = "USDT"
 TS = 'timestamp'
 TIME = 'Time'
 TIMESTAMP = 't'
@@ -130,6 +130,7 @@ def usdt_symbols_stream(type_of_trade: str) -> list:
 async def update_ohlc_cached_values(current_ohlcs: dict, ws_trade_data: dict, symbols_ohlc_data: dict,
                                     marketcap_ohlc_data: dict, marketcap_current_ohlc: dict,
                                     marketcap_latest_timestamp: int):
+    from tasks.ws_trades import OHLC_CACHE_PERIODS
     ohlc_trade_data = {ws_trade_data['s']: clean_data(ws_trade_data, TIMESTAMP, VOLUME, OHLC_OPEN, OHLC_HIGH, OHLC_LOW, OHLC_CLOSE)}
     symbol_pair = list(ohlc_trade_data.keys())[0]
 
@@ -196,6 +197,7 @@ def update_cached_symbols_ohlc_data(ohlc_data: dict, new_ohlc_data: dict, cache_
 
 def update_cached_marketcap_ohlc_data(cached_marketcap_ohlc_data_copy: dict,
                                       cached_current_marketcap_candle: dict) -> dict:
+    from tasks.ws_trades import OHLC_CACHE_PERIODS
     if not cached_marketcap_ohlc_data_copy:
         cached_marketcap_ohlc_data_copy.update({1: cached_current_marketcap_candle})
         return cached_marketcap_ohlc_data_copy
@@ -268,6 +270,7 @@ def get_coin_fund_ratio(symbol_pairs: dict, symbols_information: dict):
 
 
 def calculate_atr(ohlc_data):
+    from tasks.ws_trades import REL_STRENGTH_PERIODS
     high, low, close = [], [], []
     for item in ohlc_data.items():
         high.append(float(item[1][OHLC_HIGH]))
@@ -295,7 +298,7 @@ def calculate_relative_strength(coin_ohlc_data, cached_marketcap_ohlc_data) -> f
 def update_relative_strength_cache(marketcap_ohlc_data, coins_ohlc_data,
                                    coins_volume, coins_moment_price,
                                    rs_cache_counter):
-    marketcap_atr = calculate_atr(marketcap_ohlc_data)
+    from tasks.ws_trades import OHLC_CACHE_PERIODS
     ts_rs_vol_values = {}
     for coin_ohlc_data in coins_ohlc_data.items():
         if len(coin_ohlc_data[1]) == OHLC_CACHE_PERIODS:
@@ -427,6 +430,7 @@ def get_counter(number):
 
 
 def query_rs_signal_chart(timestamp):
+    from tasks.ta_signal import RS_SANITY_VALUE_THRESHOLD, RS_THRESHOLD
     signal = {}
 
     if query_last_day_rs_chart(past_30_min_timestamp(timestamp)):
@@ -536,3 +540,9 @@ def get_joined_signals(rs, long_vol, short_vol, atrp):
                 continue
 
     return final_signal
+
+
+def print_alive_if_passed_timestamp(timestamp):
+    if get_current_time() > timestamp:
+        print(datetime.fromtimestamp(get_current_time()))
+        return True

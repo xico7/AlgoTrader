@@ -1,33 +1,16 @@
-import time
-import traceback
-from datetime import datetime
+def execute_alpha_algo():
+    import time
+    import traceback
+    from datetime import datetime
+    from pymongo.errors import ServerSelectionTimeoutError
+    import logging
+    from data_staging import get_minutes_after_ts, get_element_chart_percentage_line, MongoDB, TIME, TS, RS, \
+        OHLC_CLOSE, ONE_HOUR_IN_SECS, ONE_DAY_IN_SECS
+    import MongoDB.db_actions as mongo
 
-from pymongo.errors import ServerSelectionTimeoutError
-import MongoDB.db_actions as mongo
-import logging
-from data_staging import get_minutes_after_ts, get_element_chart_percentage_line, MongoDB, TIME
+    signal_db_collection = mongo.connect_to_signal_db().get_collection("signal_trade")
+    algo_alpha_db_collection = mongo.connect_to_algo_alpha_db().get_collection("alpha_runs")
 
-
-### CONSTANTS ###
-
-
-OHLC_CLOSE = 'c'
-MONGO_DB_SYMBOLS_VOLUME = "symbols_volume"
-ONE_MINUTE_IN_SECS = 60
-ONE_HOUR = ONE_MINUTE_IN_SECS * 60
-TWELVE_HOUR_TIMEFRAME = 43200
-TS = 'timestamp'
-RS = 'RS'
-
-
-
-iteration_minute = 0
-signal_db_collection = mongo.connect_to_signal_db().get_collection("signal_trade")
-algo_alpha_db_collection = mongo.connect_to_algo_alpha_db().get_collection("alpha_runs")
-one_min_db = mongo.connect_to_1m_ohlc_db()
-
-
-def get_alpha():
     short_rvol_value = 0.818
     long_rvol_value = 0.3
     atr_value = 0.55
@@ -49,7 +32,7 @@ def get_alpha():
     finish_run_timestamp = time.time()
 
     while timestamp < finish_run_timestamp:
-        if (timestamp % TWELVE_HOUR_TIMEFRAME) == 0:
+        if (timestamp % (ONE_DAY_IN_SECS / 2)) == 0:
             print(f"{int((finish_run_timestamp - timestamp) / 3600)} hours remaining")
 
         timestamp += 60
@@ -84,7 +67,7 @@ def get_alpha():
                                 except KeyError:
                                     blacklist[symbol] = 0
 
-                                blacklist[symbol] = signal[TS] + ONE_HOUR * 2
+                                blacklist[symbol] = signal[TS] + ONE_HOUR_IN_SECS * 2
 
                                 for minute_after_signal in get_minutes_after_ts(symbol, signal[TS]):
                                     minute_chart_element = get_element_chart_percentage_line(minute_after_signal[OHLC_CLOSE], signal_value['rs_chart'])
