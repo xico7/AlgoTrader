@@ -1,16 +1,18 @@
 import traceback
-from datetime import datetime
-
 import requests
 from pymongo.errors import ServerSelectionTimeoutError
 from binance import AsyncClient, BinanceSocketManager
 import MongoDB.db_actions as mongo
-import asyncio
 import logging
+
+
+
 
 class QueueOverflow(Exception):
     pass
 
+
+# TODO: can i  remove setters with this new way of updating values???
 
 coingecko_marketcap_api_link = "https://api.coingecko.com/api/v3/coins/" \
                                "markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false"
@@ -53,6 +55,36 @@ class DatabaseCache:
 
     _cached_aggtrade_data = {}
     _coins_rel_strength = {}
+
+    def update_cache(self):
+        print("here")
+
+    def update_coins_volume(self, coin_symbol, coin_moment_trade_quantity):
+        if coin_symbol in self._cached_coins_volume:
+            self._cached_coins_volume[coin_symbol] += coin_moment_trade_quantity
+        else:
+            self._cached_coins_volume.update({coin_symbol: coin_moment_trade_quantity})
+
+    def update_marketcap_coins_value(self, coin_symbol: str, coin_moment_price: float, coin_ratio):
+        self._cached_marketcap_coins_value.update({coin_symbol: (float(coin_moment_price) * coin_ratio[coin_symbol])})
+
+    def update_current_marketcap_ohlc_data(self):
+        from data_staging import TIMESTAMP, OHLC_OPEN, OHLC_HIGH, OHLC_CLOSE, OHLC_LOW
+        if self.marketcap_current_ohlc[TIMESTAMP] != self.marketcap_latest_timestamp:
+            self.marketcap_current_ohlc[TIMESTAMP] = self.marketcap_latest_timestamp
+            self.marketcap_current_ohlc[OHLC_OPEN] = 0
+            self.marketcap_current_ohlc[OHLC_HIGH] = self.marketcap_current_ohlc[OHLC_CLOSE] = \
+                self.marketcap_current_ohlc[OHLC_LOW] = self.marketcap_sum
+        else:
+            if self.marketcap_current_ohlc[OHLC_OPEN] == 0:
+                self.marketcap_current_ohlc[OHLC_OPEN] = self.marketcap_sum
+
+            self.marketcap_current_ohlc[OHLC_CLOSE] = self.marketcap_sum
+            if self.marketcap_sum > self.marketcap_current_ohlc[OHLC_HIGH]:
+                self.marketcap_current_ohlc[OHLC_HIGH] = self.marketcap_sum
+            if self.marketcap_sum < self.marketcap_current_ohlc[OHLC_LOW]:
+                self.marketcap_current_ohlc[OHLC_LOW] = self.marketcap_sum
+
 
     @property
     def aggtrade_data(self):
@@ -193,11 +225,12 @@ class TACache:
 async def execute_ws_trades(alive_debug_secs):
     from MongoDB.db_ohlc_create import insert_ohlc_data
     from data_staging import get_current_time, update_current_marketcap_ohlc_data, update_relative_strength_cache, \
-        remove_usdt, update_ohlc_cached_values, print_alive_if_passed_timestamp, clean_data, usdt_symbols_stream, \
-        update_cached_marketcap_coins_value, update_cached_coins_values, update_cached_coin_volumes, get_coin_fund_ratio
+        remove_usdt, update_ohlc_cached_values, print_alive_if_passed_timestamp, get_data_from_keys, usdt_with_bnb_symbols_stream, \
+        update_cached_marketcap_coins_value, update_cached_coin_volumes, get_coin_fund_ratio
 
-    multisocket_candle = BinanceSocketManager(await AsyncClient.create()).multiplex_socket(
-        usdt_symbols_stream(CANDLESTICKS_ONE_MINUTE_WS) + usdt_symbols_stream(AGGREGATED_TRADE_WS))
+    abc = BinanceSocketManager(await AsyncClient.create())
+    multisocket_candle = abc.multiplex_socket(
+        usdt_with_bnb_symbols_stream(CANDLESTICKS_ONE_MINUTE_WS) + usdt_with_bnb_symbols_stream(AGGREGATED_TRADE_WS))
 
     coin_ratio = get_coin_fund_ratio(remove_usdt(SP500_SYMBOLS_USDT_PAIRS), requests.get(coingecko_marketcap_api_link).json())
     ta_lines_db = mongo.connect_to_ta_lines_db()
@@ -209,8 +242,6 @@ async def execute_ws_trades(alive_debug_secs):
     ohlc_4h_db = mongo.connect_to_4h_ohlc_db()
     ohlc_1d_db = mongo.connect_to_1d_ohlc_db()
 
-
-    print("here", alive_debug_secs)
     initiate_time_counter = debug_running_execution = get_current_time()
     db_cache = DatabaseCache()
     pycache_counter = 0
@@ -224,10 +255,7 @@ async def execute_ws_trades(alive_debug_secs):
                 cur_time = get_current_time()
                 if cur_time > initiate_time_counter + ATOMIC_INSERT_TIME and db_cache.marketcap_latest_timestamp > 0:
                     initiate_time_counter += ATOMIC_INSERT_TIME
-                    db_cache.marketcap_current_ohlc = update_current_marketcap_ohlc_data(
-                        db_cache.marketcap_current_ohlc,
-                        db_cache.marketcap_latest_timestamp,
-                        db_cache.marketcap_sum)
+                    db_cache.marketcap_current_ohlc = db_cache.update_current_marketcap_ohlc_data()
                     if len(db_cache.marketcap_ohlc_data) == OHLC_CACHE_PERIODS:
                         db_cache.coins_rel_strength, rs_cache_counter = update_relative_strength_cache(
                             db_cache.marketcap_ohlc_data, db_cache.coins_ohlc_data,
@@ -255,39 +283,27 @@ async def execute_ws_trades(alive_debug_secs):
 
                 if CANDLESTICK_WS in ws_trade['stream']:
                     db_cache.coins_current_ohlcs, db_cache.coins_ohlc_data, db_cache.marketcap_ohlc_data, db_cache.marketcap_latest_timestamp = \
-                        await update_ohlc_cached_values(db_cache.coins_current_ohlcs,
-                                                            ws_trade['data']['k'],
-                                                            db_cache.coins_ohlc_data,
-                                                            db_cache.marketcap_ohlc_data,
-                                                            db_cache.marketcap_current_ohlc,
-                                                            db_cache.marketcap_latest_timestamp)
+                        await update_ohlc_cached_values(ws_trade['data']['k'], db_cache)
 
                 elif AGGREGATED_TRADE_WS in ws_trade['stream']:
                     pycache_counter += 1
 
                     aggtrade_data, symbol_pair = ws_trade['data'], ws_trade['data'][SYMBOL]
-                    coin_moment_price, coin_moment_trade_quantity = float(aggtrade_data[PRICE_P]), float(
-                        aggtrade_data[QUANTITY])
+                    coin_moment_price = float(aggtrade_data[PRICE_P])
                     coin_symbol = remove_usdt(symbol_pair)
 
                     if coin_symbol:
-                        db_cache.coins_moment_price = update_cached_coins_values(
-                            db_cache.coins_moment_price, coin_symbol, coin_moment_price)
-                        db_cache.coins_volume = update_cached_coin_volumes(
-                            db_cache.coins_volume, coin_symbol, coin_moment_trade_quantity)
+                        db_cache.coins_moment_price.update({coin_symbol: coin_moment_price})
+                        db_cache.update_coins_volume(coin_symbol, float(aggtrade_data[QUANTITY]))
 
                         if symbol_pair in SP500_SYMBOLS_USDT_PAIRS:
-                            db_cache.marketcap_coins_value = update_cached_marketcap_coins_value(
-                                db_cache.marketcap_coins_value, coin_symbol, coin_moment_price, coin_ratio[coin_symbol])
-
+                            db_cache.update_marketcap_coins_value(coin_symbol, coin_moment_price, coin_ratio)
                             db_cache.marketcap_sum = sum(list(db_cache.marketcap_coins_value.values()))
 
-                    db_cache.aggtrade_data = {
-                        symbol_pair: clean_data(aggtrade_data, EVENT_TIMESTAMP, PRICE_P, QUANTITY)}
+                    db_cache.aggtrade_data = {symbol_pair: get_data_from_keys(aggtrade_data, EVENT_TIMESTAMP, PRICE_P, QUANTITY)}
 
                     if pycache_counter > AGGTRADE_PYCACHE:
                         await mongo.duplicate_insert_aggtrade_data(ta_lines_db, db_cache.aggtrade_data)
-                        # await dts.insert_aggtrade_data(ta_lines_db, cache.aggtrade_data)
                         db_cache.aggtrade_data = {}
                         pycache_counter -= AGGTRADE_PYCACHE
 

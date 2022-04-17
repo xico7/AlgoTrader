@@ -13,6 +13,7 @@ from numpy import double
 
 
 #### OHLC ####
+from tasks.ws_trades import DatabaseCache
 
 OHLC_OPEN = 'o'
 OHLC_CLOSE = 'c'
@@ -77,6 +78,7 @@ def get_element_chart_percentage_line(pricevalue, rs_chart):
     return key_pricevalue[0]
 
 
+#TODO: refactor.. this is getting too many values.. i only need one.. perf implicactions.
 def get_minutes_after_ts(symbol, timestamp):
     one_min_db = mongo.connect_to_1m_ohlc_db()
     return list(one_min_db.get_collection(symbol).find({MongoDB.AND: [
@@ -99,76 +101,82 @@ def remove_usdt(symbols: Union[List[str], str]):
         return [re.match('(^(.+?)USDT)', symbol).groups()[1].upper() for symbol in symbols]
 
 
-def clean_data(data, *args):
+def get_data_from_keys(data, *keys):
     data_keys = {}
-    for arg in args:
-        data_keys.update({arg: data[arg]})
-
+    for key in keys:
+        data_keys.update({key: data[key]})
     return data_keys
 
 
 def usdt_symbols_stream(type_of_trade: str) -> list:
-    usdt = "USDT"
-
     binance_symbols_price = requests.get("https://api.binance.com/api/v3/ticker/price").json()
-    symbols = []
 
     binance_symbols = []
-    for elem in binance_symbols_price:
-        binance_symbols.append(elem["symbol"])
+    for symbol_info in binance_symbols_price:
+        symbol = symbol_info["symbol"]
+        if USDT in symbol:
+            binance_symbols.append(symbol)
 
-    for all_elements in binance_symbols:
-        if usdt in all_elements:
-            bnb_append_elem_search = all_elements.replace(usdt, "BNB")
-            bnb_prefix_elem_search = "BNB" + all_elements.replace(usdt, "")
-            for bnb_elems in binance_symbols:
-                if bnb_append_elem_search in bnb_elems or bnb_prefix_elem_search in bnb_elems:
-                    symbols.append(all_elements)
-    return [f"{symbol.lower()}{type_of_trade}" for symbol in symbols]
+    return [f"{symbol.lower()}{type_of_trade}" for symbol in binance_symbols]
 
 
-async def update_ohlc_cached_values(current_ohlcs: dict, ws_trade_data: dict, symbols_ohlc_data: dict,
-                                    marketcap_ohlc_data: dict, marketcap_current_ohlc: dict,
-                                    marketcap_latest_timestamp: int):
+def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
+    symbols = usdt_symbols_stream(type_of_trade)
+    bnb_symbols = []
+    for symbol in symbols:
+        bnb_suffix_elem_search = symbol.replace(USDT, "BNB")
+        bnb_prefix_elem_search = "BNB" + symbol.replace(USDT, "")
+        if bnb_suffix_elem_search in symbol or bnb_prefix_elem_search in symbol:
+            bnb_symbols.append(symbol)
+
+    return bnb_symbols
+
+
+def non_existing_record(collection_feed, timestamp):
+    return not bool(collection_feed.find({TS: {MongoDB.EQUAL: timestamp}}).count())
+
+
+async def update_ohlc_cached_values(ws_trade_data: dict, db_cache):
     from tasks.ws_trades import OHLC_CACHE_PERIODS
-    ohlc_trade_data = {ws_trade_data['s']: clean_data(ws_trade_data, TIMESTAMP, VOLUME, OHLC_OPEN, OHLC_HIGH, OHLC_LOW, OHLC_CLOSE)}
-    symbol_pair = list(ohlc_trade_data.keys())[0]
+    ohlc_symbol_trade_data = {ws_trade_data['s']: get_data_from_keys(ws_trade_data, TIMESTAMP, VOLUME, OHLC_OPEN, OHLC_HIGH, OHLC_LOW, OHLC_CLOSE)}
+    symbol_pair = list(ohlc_symbol_trade_data.keys())[0]
+    ohlc_trade_data = ohlc_symbol_trade_data[symbol_pair]
 
-    if symbol_pair not in current_ohlcs:
-        current_ohlcs.update(ohlc_trade_data)
+    if symbol_pair not in db_cache.coins_current_ohlcs:
+        db_cache.coins_current_ohlcs.update(ohlc_symbol_trade_data)
 
-    current_ohlcs[symbol_pair] = update_current_symbol_ohlc(current_ohlcs[symbol_pair], ohlc_trade_data[symbol_pair])
+    db_cache.coins_current_ohlcs[symbol_pair] = update_current_symbol_ohlc(db_cache.coins_current_ohlcs[symbol_pair], ohlc_trade_data)
 
-    # Candle timeframe changed, time to write candle value into DB and reset symbol value.
-    if ohlc_trade_data[symbol_pair][TIMESTAMP] > current_ohlcs[symbol_pair][TIMESTAMP]:
-        new_ohlc_data = {symbol_pair: current_ohlcs[symbol_pair]}
 
-        del current_ohlcs[symbol_pair]
-        symbols_ohlc_data = update_cached_symbols_ohlc_data(symbols_ohlc_data, new_ohlc_data, OHLC_CACHE_PERIODS)
+    if ohlc_trade_data[TIMESTAMP] == db_cache.coins_current_ohlcs[symbol_pair][TIMESTAMP]:
+        new_ohlc_data = {symbol_pair: db_cache.coins_current_ohlcs[symbol_pair]}
 
-        if ohlc_trade_data[symbol_pair][TIMESTAMP] > marketcap_latest_timestamp:
-            marketcap_latest_timestamp = ohlc_trade_data[symbol_pair][TIMESTAMP]  # Update marketcap latest timestamp
-            if marketcap_current_ohlc[TIMESTAMP] > 0 and not marketcap_ohlc_data:
+        del db_cache.coins_current_ohlcs[symbol_pair]
+        db_cache.coins_ohlc_data = update_cached_symbols_ohlc_data(db_cache.coins_ohlc_data, new_ohlc_data, OHLC_CACHE_PERIODS)
+
+        if ohlc_trade_data[TIMESTAMP] > db_cache.marketcap_latest_timestamp:
+            db_cache.marketcap_latest_timestamp = ohlc_trade_data[TIMESTAMP]
+            if db_cache.marketcap_current_ohlc[TIMESTAMP] > 0 and not db_cache.marketcap_ohlc_data:
                 marketcap_ohlc_data = copy.deepcopy(
-                    update_cached_marketcap_ohlc_data(marketcap_ohlc_data, marketcap_current_ohlc))
+                    update_cached_marketcap_ohlc_data(db_cache.marketcap_ohlc_data, db_cache.marketcap_current_ohlc))
             if marketcap_ohlc_data and (
-                    marketcap_ohlc_data[len(marketcap_ohlc_data)][TIMESTAMP] != marketcap_current_ohlc[TIMESTAMP]):
+                    marketcap_ohlc_data[len(marketcap_ohlc_data)][TIMESTAMP] != db_cache.marketcap_current_ohlc[TIMESTAMP]):
                 marketcap_ohlc_data = copy.deepcopy(
-                    update_cached_marketcap_ohlc_data(marketcap_ohlc_data, marketcap_current_ohlc))
+                    update_cached_marketcap_ohlc_data(marketcap_ohlc_data, db_cache.marketcap_current_ohlc))
 
-    return current_ohlcs, symbols_ohlc_data, marketcap_ohlc_data, marketcap_latest_timestamp
+    return db_cache.coins_current_ohlcs, db_cache.coins_ohlc_data, marketcap_ohlc_data, db_cache.marketcap_latest_timestamp
 
 
 def update_current_symbol_ohlc(current_symbol_ohlc, ohlc_trade_data):
     # Close is always the newest value.
-    current_symbol_ohlc[OHLC_CLOSE] = ohlc_trade_data[OHLC_CLOSE]
     # Volume always goes up in the same kline.
+    # Update max if new max, Update low if new low.
+
+    current_symbol_ohlc[OHLC_CLOSE] = ohlc_trade_data[OHLC_CLOSE]
     current_symbol_ohlc[VOLUME] = ohlc_trade_data[VOLUME]
 
-    # Update max if new max.
     if ohlc_trade_data[OHLC_HIGH] > current_symbol_ohlc[OHLC_HIGH]:
         current_symbol_ohlc[OHLC_HIGH] = ohlc_trade_data[OHLC_HIGH]
-    # Update low if new low
     elif ohlc_trade_data[OHLC_LOW] < current_symbol_ohlc[OHLC_LOW]:
         current_symbol_ohlc[OHLC_LOW] = ohlc_trade_data[OHLC_LOW]
 
@@ -216,28 +224,22 @@ def update_cached_marketcap_ohlc_data(cached_marketcap_ohlc_data_copy: dict,
     return cached_marketcap_ohlc_data_copy
 
 
-def update_current_marketcap_ohlc_data(marketcap_ohlc: dict, timestamp: int, marketcap_moment_value: float) -> dict:
-    if marketcap_ohlc[TIMESTAMP] != timestamp:
-        marketcap_ohlc[TIMESTAMP] = timestamp
-        marketcap_ohlc[OHLC_OPEN] = 0
-        marketcap_ohlc[OHLC_HIGH] = marketcap_ohlc[OHLC_CLOSE] = marketcap_ohlc[OHLC_LOW] = marketcap_moment_value
-    else:
-        if marketcap_ohlc[OHLC_OPEN] == 0:
-            marketcap_ohlc[OHLC_OPEN] = marketcap_moment_value
-
-        marketcap_ohlc[OHLC_CLOSE] = marketcap_moment_value
-        if marketcap_moment_value > marketcap_ohlc[OHLC_HIGH]:
-            marketcap_ohlc[OHLC_HIGH] = marketcap_moment_value
-        if marketcap_moment_value < marketcap_ohlc[OHLC_LOW]:
-            marketcap_ohlc[OHLC_LOW] = marketcap_moment_value
-
-    return marketcap_ohlc
-
-
-def update_cached_coins_values(cached_coins_values: dict, coin_symbol: str, coin_moment_price: float) -> dict:
-    cached_coins_values.update({coin_symbol: coin_moment_price})
-
-    return cached_coins_values
+# def update_current_marketcap_ohlc_data(marketcap_ohlc: dict, timestamp: int, marketcap_moment_value: float) -> dict:
+#     if marketcap_ohlc[TIMESTAMP] != timestamp:
+#         marketcap_ohlc[TIMESTAMP] = timestamp
+#         marketcap_ohlc[OHLC_OPEN] = 0
+#         marketcap_ohlc[OHLC_HIGH] = marketcap_ohlc[OHLC_CLOSE] = marketcap_ohlc[OHLC_LOW] = marketcap_moment_value
+#     else:
+#         if marketcap_ohlc[OHLC_OPEN] == 0:
+#             marketcap_ohlc[OHLC_OPEN] = marketcap_moment_value
+#
+#         marketcap_ohlc[OHLC_CLOSE] = marketcap_moment_value
+#         if marketcap_moment_value > marketcap_ohlc[OHLC_HIGH]:
+#             marketcap_ohlc[OHLC_HIGH] = marketcap_moment_value
+#         if marketcap_moment_value < marketcap_ohlc[OHLC_LOW]:
+#             marketcap_ohlc[OHLC_LOW] = marketcap_moment_value
+#
+#     return marketcap_ohlc
 
 
 def update_cached_coin_volumes(cached_coins_volume: dict, coin_symbol: str, coin_moment_trade_quantity: float) -> dict:
