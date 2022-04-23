@@ -42,16 +42,25 @@ def create_insert_ohlc_data(ohlc_open_timestamp, query_db, destination_db, ohlc_
 # open timestamp is the last finished candle opening time,
 # exactly what we want for one minute candle but not really whats
 # needed for the other ones where we must add one minute.
-def insert_ohlc_data(open_timestamp, ohlc_1m_db, ohlc_5m_db, ohlc_15m_db, ohlc_1h_db, ohlc_4h_db, ohlc_1d_db):
+def insert_ohlc_data(open_timestamp):
+    ohlc_1m_db = mongo.connect_to_1m_ohlc_db()
+    ohlc_5m_db = mongo.connect_to_5m_ohlc_db()
+    ohlc_15m_db = mongo.connect_to_15m_ohlc_db()
+    ohlc_1h_db = mongo.connect_to_1h_ohlc_db()
+    ohlc_4h_db = mongo.connect_to_4h_ohlc_db()
+    ohlc_1d_db = mongo.connect_to_1d_ohlc_db()
+
+    aggtrade_data_client = mongo.CLIENT['aggtrade_data']
+
     if open_timestamp % ONE_MIN_IN_SECS == 0:
-        create_insert_ohlc_data(open_timestamp, mongo.CLIENT['Relative_strength'], ohlc_1m_db, ONE_MIN_IN_SECS, PRICE, PRICE, PRICE, PRICE)
+        create_insert_ohlc_data(open_timestamp, aggtrade_data_client, ohlc_1m_db, ONE_MIN_IN_SECS, PRICE, PRICE, PRICE, PRICE)
     if open_timestamp % FIVE_MIN_IN_SECS == 0:
-        create_insert_ohlc_data((open_timestamp - FIVE_MIN_IN_SECS), mongo.CLIENT['Relative_strength'], ohlc_5m_db, FIVE_MIN_IN_SECS, PRICE, PRICE, PRICE, PRICE)
+        create_insert_ohlc_data((open_timestamp - FIVE_MIN_IN_SECS), aggtrade_data_client, ohlc_5m_db, FIVE_MIN_IN_SECS, PRICE, PRICE, PRICE, PRICE)
     if open_timestamp % FIFTEEN_MIN_IN_SECS == 0:
-        create_insert_ohlc_data((open_timestamp - FIFTEEN_MIN_IN_SECS), mongo.CLIENT['Relative_strength'], ohlc_15m_db, FIFTEEN_MIN_IN_SECS, PRICE, PRICE, PRICE, PRICE)
+        create_insert_ohlc_data((open_timestamp - FIFTEEN_MIN_IN_SECS), aggtrade_data_client, ohlc_15m_db, FIFTEEN_MIN_IN_SECS, PRICE, PRICE, PRICE, PRICE)
     if open_timestamp % ONE_HOUR_IN_SECS == 0:
-        create_insert_ohlc_data((open_timestamp - ONE_HOUR_IN_SECS), mongo.CLIENT['Relative_strength'], ohlc_1h_db, ONE_HOUR_IN_SECS, PRICE, PRICE, PRICE, PRICE)
+        create_insert_ohlc_data((open_timestamp - ONE_HOUR_IN_SECS), aggtrade_data_client, ohlc_1h_db, ONE_HOUR_IN_SECS, PRICE, PRICE, PRICE, PRICE)
     if open_timestamp % FOUR_HOUR_IN_SECS == 0:
-        create_insert_ohlc_data((open_timestamp - FOUR_HOUR_IN_SECS), mongo.CLIENT['Relative_strength'], ohlc_4h_db, FOUR_HOUR_IN_SECS, PRICE, PRICE, PRICE, PRICE)
+        create_insert_ohlc_data((open_timestamp - FOUR_HOUR_IN_SECS), aggtrade_data_client, ohlc_4h_db, FOUR_HOUR_IN_SECS, PRICE, PRICE, PRICE, PRICE)
     if open_timestamp % ONE_DAY_IN_SECS == 0:
-        create_insert_ohlc_data((open_timestamp - ONE_DAY_IN_SECS), mongo.CLIENT['Relative_strength'], ohlc_1d_db, ONE_DAY_IN_SECS, PRICE, PRICE, PRICE, PRICE)
+        create_insert_ohlc_data((open_timestamp - ONE_DAY_IN_SECS), aggtrade_data_client, ohlc_1d_db, ONE_DAY_IN_SECS, PRICE, PRICE, PRICE, PRICE)

@@ -38,7 +38,7 @@ def connect_to_1d_ohlc_db():
 
 
 def connect_to_rs_db():
-    return AsyncMotorClient('mongodb://localhost:27017/Relative_strength').get_default_database()
+    return AsyncMotorClient('mongodb://localhost:27017/aggtrade_data_client').get_default_database()
 
 
 def connect_to_ta_lines_db():
@@ -54,12 +54,12 @@ def connect_to_ta_analysis_db():
 
 
 
-async def duplicate_insert_aggtrade_data(db, data: dict):
-    insert_many_from_dict(db, data)
+async def insert_many_from_dict_async_two(db, data: dict):
+    insert_many_from_dict_async_one(db, data)
 
 
-async def duplicate_insert_data_rs_volume_price(db, data: dict):
-    insert_many_from_dict(db, data)
+async def rs_insert_many_from_dict_async_two(data: dict):
+    insert_many_from_dict_async_one(connect_to_rs_db(), data)
 
 
 def insert_one_from_dict(database, data):
@@ -67,9 +67,9 @@ def insert_one_from_dict(database, data):
         database.get_collection(key).insert_one(data[key])
 
 
-def insert_many_from_dict(database, data):
+def insert_many_from_dict_async_one(database, data):
     for key in list(data.keys()):
-        database.get_collection(key).insert_many_from_dict(data[key])
+        database.get_collection(key).insert_many(data[key])
 
 
 

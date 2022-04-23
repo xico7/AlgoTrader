@@ -13,7 +13,6 @@ from numpy import double
 
 
 #### OHLC ####
-from tasks.ws_trades import DatabaseCache
 
 OHLC_OPEN = 'o'
 OHLC_CLOSE = 'c'
@@ -91,6 +90,12 @@ def get_current_time() -> int:
     return int(time.time())
 
 
+def get_last_minute(timestamp):
+    while timestamp % 60 != 0:
+        timestamp -= 1
+    return timestamp
+
+
 def remove_usdt(symbols: Union[List[str], str]):
     if isinstance(symbols, str):
         try:
@@ -136,128 +141,28 @@ def non_existing_record(collection_feed, timestamp):
     return not bool(collection_feed.find({TS: {MongoDB.EQUAL: timestamp}}).count())
 
 
-async def update_ohlc_cached_values(ws_trade_data: dict, db_cache):
+async def update_ohlc_cached_values(ws_trade_data: dict, cache):
     from tasks.ws_trades import OHLC_CACHE_PERIODS
-    ohlc_symbol_trade_data = {ws_trade_data['s']: get_data_from_keys(ws_trade_data, TIMESTAMP, VOLUME, OHLC_OPEN, OHLC_HIGH, OHLC_LOW, OHLC_CLOSE)}
-    symbol_pair = list(ohlc_symbol_trade_data.keys())[0]
-    ohlc_trade_data = ohlc_symbol_trade_data[symbol_pair]
+    symbol_pair = ws_trade_data['s']
+    ohlc_trade_data = get_data_from_keys(ws_trade_data, TIMESTAMP, VOLUME, OHLC_OPEN, OHLC_HIGH, OHLC_LOW, OHLC_CLOSE)
+    latest_timestamp = ohlc_trade_data[TIMESTAMP]
 
-    if symbol_pair not in db_cache.coins_current_ohlcs:
-        db_cache.coins_current_ohlcs.update(ohlc_symbol_trade_data)
+    if symbol_pair not in cache.coins_current_ohlcs:
+        cache.coins_current_ohlcs.symbol_dict_update(symbol_pair, ohlc_trade_data)
 
-    db_cache.coins_current_ohlcs[symbol_pair] = update_current_symbol_ohlc(db_cache.coins_current_ohlcs[symbol_pair], ohlc_trade_data)
+    cache.coins_current_ohlcs.symbol_ohlc_update(symbol_pair, ohlc_trade_data)
 
+    if latest_timestamp > cache.coins_current_ohlcs[symbol_pair][TIMESTAMP]:
+        cache.coins_ohlc_data.ohlc_update(symbol_pair, cache.coins_current_ohlcs[symbol_pair], OHLC_CACHE_PERIODS)
 
-    if ohlc_trade_data[TIMESTAMP] == db_cache.coins_current_ohlcs[symbol_pair][TIMESTAMP]:
-        new_ohlc_data = {symbol_pair: db_cache.coins_current_ohlcs[symbol_pair]}
+        del cache.coins_current_ohlcs[symbol_pair]
 
-        del db_cache.coins_current_ohlcs[symbol_pair]
-        db_cache.coins_ohlc_data = update_cached_symbols_ohlc_data(db_cache.coins_ohlc_data, new_ohlc_data, OHLC_CACHE_PERIODS)
-
-        if ohlc_trade_data[TIMESTAMP] > db_cache.marketcap_latest_timestamp:
-            db_cache.marketcap_latest_timestamp = ohlc_trade_data[TIMESTAMP]
-            if db_cache.marketcap_current_ohlc[TIMESTAMP] > 0 and not db_cache.marketcap_ohlc_data:
-                marketcap_ohlc_data = copy.deepcopy(
-                    update_cached_marketcap_ohlc_data(db_cache.marketcap_ohlc_data, db_cache.marketcap_current_ohlc))
-            if marketcap_ohlc_data and (
-                    marketcap_ohlc_data[len(marketcap_ohlc_data)][TIMESTAMP] != db_cache.marketcap_current_ohlc[TIMESTAMP]):
-                marketcap_ohlc_data = copy.deepcopy(
-                    update_cached_marketcap_ohlc_data(marketcap_ohlc_data, db_cache.marketcap_current_ohlc))
-
-    return db_cache.coins_current_ohlcs, db_cache.coins_ohlc_data, marketcap_ohlc_data, db_cache.marketcap_latest_timestamp
-
-
-def update_current_symbol_ohlc(current_symbol_ohlc, ohlc_trade_data):
-    # Close is always the newest value.
-    # Volume always goes up in the same kline.
-    # Update max if new max, Update low if new low.
-
-    current_symbol_ohlc[OHLC_CLOSE] = ohlc_trade_data[OHLC_CLOSE]
-    current_symbol_ohlc[VOLUME] = ohlc_trade_data[VOLUME]
-
-    if ohlc_trade_data[OHLC_HIGH] > current_symbol_ohlc[OHLC_HIGH]:
-        current_symbol_ohlc[OHLC_HIGH] = ohlc_trade_data[OHLC_HIGH]
-    elif ohlc_trade_data[OHLC_LOW] < current_symbol_ohlc[OHLC_LOW]:
-        current_symbol_ohlc[OHLC_LOW] = ohlc_trade_data[OHLC_LOW]
-
-    return current_symbol_ohlc
-
-
-def update_cached_symbols_ohlc_data(ohlc_data: dict, new_ohlc_data: dict, cache_periods: int) -> Optional[dict]:
-    new_ohlc_symbol = list(new_ohlc_data.keys())[0]
-    new_ohlc_values = list(new_ohlc_data.values())[0]
-
-    if new_ohlc_symbol not in ohlc_data:
-        ohlc_data.update({new_ohlc_symbol: {1: new_ohlc_values}})
-    else:
-        atr_last_index = max(list(ohlc_data[new_ohlc_symbol]))
-
-        if atr_last_index < cache_periods:
-            ohlc_data[new_ohlc_symbol][atr_last_index + 1] = new_ohlc_values
-        else:
-            for elem in ohlc_data[new_ohlc_symbol]:
-                if not elem == atr_last_index:
-                    ohlc_data[new_ohlc_symbol][elem] = ohlc_data[new_ohlc_symbol][elem + 1]
-                else:
-                    ohlc_data[new_ohlc_symbol][atr_last_index] = new_ohlc_values
-    return ohlc_data
-
-
-def update_cached_marketcap_ohlc_data(cached_marketcap_ohlc_data_copy: dict,
-                                      cached_current_marketcap_candle: dict) -> dict:
-    from tasks.ws_trades import OHLC_CACHE_PERIODS
-    if not cached_marketcap_ohlc_data_copy:
-        cached_marketcap_ohlc_data_copy.update({1: cached_current_marketcap_candle})
-        return cached_marketcap_ohlc_data_copy
-
-    last_index = max(list(cached_marketcap_ohlc_data_copy))
-
-    if last_index < OHLC_CACHE_PERIODS:
-        cached_marketcap_ohlc_data_copy.update({last_index + 1: cached_current_marketcap_candle})
-    else:
-        for elem in cached_marketcap_ohlc_data_copy:
-            if not elem == last_index:
-                cached_marketcap_ohlc_data_copy[elem] = cached_marketcap_ohlc_data_copy[elem + 1]
-            else:
-                cached_marketcap_ohlc_data_copy.update({OHLC_CACHE_PERIODS: cached_current_marketcap_candle})
-
-    return cached_marketcap_ohlc_data_copy
-
-
-# def update_current_marketcap_ohlc_data(marketcap_ohlc: dict, timestamp: int, marketcap_moment_value: float) -> dict:
-#     if marketcap_ohlc[TIMESTAMP] != timestamp:
-#         marketcap_ohlc[TIMESTAMP] = timestamp
-#         marketcap_ohlc[OHLC_OPEN] = 0
-#         marketcap_ohlc[OHLC_HIGH] = marketcap_ohlc[OHLC_CLOSE] = marketcap_ohlc[OHLC_LOW] = marketcap_moment_value
-#     else:
-#         if marketcap_ohlc[OHLC_OPEN] == 0:
-#             marketcap_ohlc[OHLC_OPEN] = marketcap_moment_value
-#
-#         marketcap_ohlc[OHLC_CLOSE] = marketcap_moment_value
-#         if marketcap_moment_value > marketcap_ohlc[OHLC_HIGH]:
-#             marketcap_ohlc[OHLC_HIGH] = marketcap_moment_value
-#         if marketcap_moment_value < marketcap_ohlc[OHLC_LOW]:
-#             marketcap_ohlc[OHLC_LOW] = marketcap_moment_value
-#
-#     return marketcap_ohlc
-
-
-def update_cached_coin_volumes(cached_coins_volume: dict, coin_symbol: str, coin_moment_trade_quantity: float) -> dict:
-    if coin_symbol in cached_coins_volume:
-        cached_coins_volume[coin_symbol] += coin_moment_trade_quantity
-    else:
-        cached_coins_volume.update({coin_symbol: coin_moment_trade_quantity})
-
-    return cached_coins_volume
-
-
-def update_cached_marketcap_coins_value(cached_marketcap_coins_value: dict,
-                                        coin_symbol: str,
-                                        coin_moment_price: float,
-                                        coin_ratio: float) -> dict:
-    cached_marketcap_coins_value.update({coin_symbol: (float(coin_moment_price) * coin_ratio)})
-
-    return cached_marketcap_coins_value
+        if latest_timestamp > cache.marketcap_latest_timestamp:
+            cache.marketcap_latest_timestamp = latest_timestamp
+            if (cache.marketcap_current_ohlc[TIMESTAMP] > 0 and not cache.marketcap_ohlc_data) or \
+                    (cache.marketcap_ohlc_data and (
+                    cache.marketcap_ohlc_data[len(cache.marketcap_ohlc_data)][TIMESTAMP] != cache.marketcap_current_ohlc[TIMESTAMP])):
+                cache.marketcap_ohlc_data.my_update(cache.marketcap_current_ohlc)
 
 
 def get_coin_fund_ratio(symbol_pairs: dict, symbols_information: dict):
@@ -269,55 +174,6 @@ def get_coin_fund_ratio(symbol_pairs: dict, symbols_information: dict):
             coin_ratio.update({current_symbol: symbol_info['market_cap'] / symbol_info['current_price']})
 
     return coin_ratio
-
-
-def calculate_atr(ohlc_data):
-    from tasks.ws_trades import REL_STRENGTH_PERIODS
-    high, low, close = [], [], []
-    for item in ohlc_data.items():
-        high.append(float(item[1][OHLC_HIGH]))
-        low.append(float(item[1][OHLC_LOW]))
-        close.append(float(item[1][OHLC_CLOSE]))
-
-    average_true_range = talib.ATR(np.array(high), np.array(low), np.array(close), timeperiod=REL_STRENGTH_PERIODS)[
-        REL_STRENGTH_PERIODS]
-
-    return double(average_true_range) / double(ohlc_data[REL_STRENGTH_PERIODS][OHLC_CLOSE]) * 100
-
-
-def calculate_relative_strength(coin_ohlc_data, cached_marketcap_ohlc_data) -> float:
-    coin_change_percentage = ((float(coin_ohlc_data[len(coin_ohlc_data)][OHLC_OPEN]) / float(
-        coin_ohlc_data[1][OHLC_OPEN])) - 1) * 100
-    try:
-        market_change_percentage = ((cached_marketcap_ohlc_data[len(coin_ohlc_data)][OHLC_OPEN] /
-                                     cached_marketcap_ohlc_data[1][OHLC_OPEN]) - 1) * 100
-    except ZeroDivisionError:
-        return 0  # unlikely case, no better solution found.
-
-    return coin_change_percentage - market_change_percentage
-
-
-def update_relative_strength_cache(marketcap_ohlc_data, coins_ohlc_data,
-                                   coins_volume, coins_moment_price,
-                                   rs_cache_counter):
-    from tasks.ws_trades import OHLC_CACHE_PERIODS
-    ts_rs_vol_values = {}
-    for coin_ohlc_data in coins_ohlc_data.items():
-        if len(coin_ohlc_data[1]) == OHLC_CACHE_PERIODS:
-            rs_cache_counter += 1
-            try:
-                get_coin_volume = coins_volume[remove_usdt(coin_ohlc_data[0])]
-                get_coin_moment_price = coins_moment_price[remove_usdt(coin_ohlc_data[0])]
-            except KeyError:
-                continue
-
-            relative_strength = calculate_relative_strength(coin_ohlc_data[1], marketcap_ohlc_data)
-
-            ts_rs_vol_values[coin_ohlc_data[0]] = {TIME: get_current_time(), RS: relative_strength,
-                                                   VOLUME: get_coin_volume, PRICE: get_coin_moment_price}
-    return ts_rs_vol_values, rs_cache_counter
-
-
 
 
 def query_db_documents(db_feed, collection, number_of_periods, current_minute):
@@ -382,7 +238,7 @@ def add_elem_to_chart(element, symbols_data, symbol_moment_price):
 
     if counter not in symbols_data:
         symbols_data.update({str(counter): {VALUE: symbol_moment_price * (1 + (counter * 0.01)),
-                                                VOLUME: element[VOLUME], AVG_RS: element['RS']}})
+                                            VOLUME: element[VOLUME], AVG_RS: element['RS']}}, )
     else:
         symbols_data[str(counter)][VOLUME] += element[VOLUME]
         symbols_data[str(counter)][AVG_RS] += element[VOLUME] / symbols_data[counter][VOLUME] * element['RS']
