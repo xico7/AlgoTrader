@@ -56,7 +56,7 @@ async def execute_daemon_ta_analysis(alive_debug_secs):
                 if iteration_minute % THIRTY_MIN_IN_SECS == 0:
                     if non_existing_record(rs_chart_col, iteration_minute):
                         rs_chart_col.insert_one({
-                            TS: iteration_minute, "rs_chart": create_last_day_rs_chart(iteration_minute, mongo.connect_to_ta_lines_db())})
+                            TS: iteration_minute, "rs_chart": create_last_day_rs_chart(iteration_minute, mongo.async_connect_to_aggtrade_data_db())})
 
             if print_alive_if_passed_timestamp(starting_execution_ts + alive_debug_secs):
                 starting_execution_ts += alive_debug_secs

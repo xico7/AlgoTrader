@@ -43,6 +43,52 @@ def create_insert_ohlc_data(ohlc_open_timestamp, query_db, destination_db, ohlc_
 # exactly what we want for one minute candle but not really whats
 # needed for the other ones where we must add one minute.
 def insert_ohlc_data(open_timestamp):
+    #TODO:
+    # if cur_time % 60 in [-1, 0, 1] and (
+    #         latest_ohlc_open_timestamp := get_last_minute(cur_time - 3)) != done_timestamp:
+    #     done_timestamp = latest_ohlc_open_timestamp
+    #     insert_ohlc_data(latest_ohlc_open_timestamp)
+
+    #TODO:
+    # def calculate_relative_strength(coin_ohlc_data, cached_marketcap_ohlc_data) -> float:
+    #     coin_change_percentage = ((float(coin_ohlc_data[len(coin_ohlc_data)][OHLC_OPEN]) / float(
+    #         coin_ohlc_data[1][OHLC_OPEN])) - 1) * 100
+    #     try:
+    #         market_change_percentage = ((cached_marketcap_ohlc_data[len(coin_ohlc_data)][OHLC_OPEN] /
+    #                                      cached_marketcap_ohlc_data[1][OHLC_OPEN]) - 1) * 100
+    #     except ZeroDivisionError:
+    #         return 0  # unlikely case, no better solution found.
+    #
+    #     return coin_change_percentage - market_change_percentage
+
+    # TODO:
+    # if symbol_pair in SP500_SYMBOLS_USDT_PAIRS:
+    #     cache.marketcap_coins_value.update(
+    #         {coin_symbol: (float(aggtrade_data[PRICE_P]) * coin_ratio[coin_symbol])})
+    #     cache.marketcap_sum = sum(list(cache.marketcap_coins_value.values()))
+    # coin_ratio = get_coin_fund_ratio(remove_usdt(SP500_SYMBOLS_USDT_PAIRS), requests.get(coingecko_marketcap_api_link).json())
+
+    # TODO:
+    # coin_ratio = get_coin_fund_ratio(remove_usdt(SP500_SYMBOLS_USDT_PAIRS),
+    #                                  requests.get(coingecko_marketcap_api_link).json())
+    # query = list(mongo.connect_to_aggtrade_data_db().get_collection("BTCUSDT").find({MongoDB.AND: [
+    #     {"E": {MongoDB.HIGHER_EQ: 0}},
+    #     {"E": {MongoDB.LOWER_EQ: get_current_time_ms()}}
+    # ]
+    # }))
+
+    # TODO:
+    # SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'LUNAUSDT',
+    #                             'DOGEUSDT',
+    #                             'AVAXUSDT', 'SHIBUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
+    #                             'BCHUSDT',
+    #                             'ALGOUSDT',
+    #                             'MANAUSDT', 'XLMUSDT', 'AXSUSDT', 'VETUSDT', 'FTTUSDT', 'EGLDUSDT', 'ATOMUSDT',
+    #                             'ICPUSDT',
+    #                             'FILUSDT',
+    #                             'HBARUSDT', 'SANDUSDT', 'THETAUSDT', 'FTMUSDT',
+    #                             'NEARUSDT', 'BTTUSDTXTZUSDT', 'XMRUSDT', 'KLAYUSDT', 'GALAUSDT', 'HNTUSDT', 'GRTUSDT',
+    #                             'LRCUSDT']
     ohlc_1m_db = mongo.connect_to_1m_ohlc_db()
     ohlc_5m_db = mongo.connect_to_5m_ohlc_db()
     ohlc_15m_db = mongo.connect_to_15m_ohlc_db()

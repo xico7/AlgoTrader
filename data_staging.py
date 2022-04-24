@@ -90,6 +90,10 @@ def get_current_time() -> int:
     return int(time.time())
 
 
+def get_current_time_ms() -> int:
+    return int(str(int(time.time())) + "000")
+
+
 def get_last_minute(timestamp):
     while timestamp % 60 != 0:
         timestamp -= 1
@@ -139,30 +143,6 @@ def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
 
 def non_existing_record(collection_feed, timestamp):
     return not bool(collection_feed.find({TS: {MongoDB.EQUAL: timestamp}}).count())
-
-
-async def update_ohlc_cached_values(ws_trade_data: dict, cache):
-    from tasks.ws_trades import OHLC_CACHE_PERIODS
-    symbol_pair = ws_trade_data['s']
-    ohlc_trade_data = get_data_from_keys(ws_trade_data, TIMESTAMP, VOLUME, OHLC_OPEN, OHLC_HIGH, OHLC_LOW, OHLC_CLOSE)
-    latest_timestamp = ohlc_trade_data[TIMESTAMP]
-
-    if symbol_pair not in cache.coins_current_ohlcs:
-        cache.coins_current_ohlcs.symbol_dict_update(symbol_pair, ohlc_trade_data)
-
-    cache.coins_current_ohlcs.symbol_ohlc_update(symbol_pair, ohlc_trade_data)
-
-    if latest_timestamp > cache.coins_current_ohlcs[symbol_pair][TIMESTAMP]:
-        cache.coins_ohlc_data.ohlc_update(symbol_pair, cache.coins_current_ohlcs[symbol_pair], OHLC_CACHE_PERIODS)
-
-        del cache.coins_current_ohlcs[symbol_pair]
-
-        if latest_timestamp > cache.marketcap_latest_timestamp:
-            cache.marketcap_latest_timestamp = latest_timestamp
-            if (cache.marketcap_current_ohlc[TIMESTAMP] > 0 and not cache.marketcap_ohlc_data) or \
-                    (cache.marketcap_ohlc_data and (
-                    cache.marketcap_ohlc_data[len(cache.marketcap_ohlc_data)][TIMESTAMP] != cache.marketcap_current_ohlc[TIMESTAMP])):
-                cache.marketcap_ohlc_data.my_update(cache.marketcap_current_ohlc)
 
 
 def get_coin_fund_ratio(symbol_pairs: dict, symbols_information: dict):

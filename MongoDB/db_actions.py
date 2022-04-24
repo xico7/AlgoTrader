@@ -38,11 +38,15 @@ def connect_to_1d_ohlc_db():
 
 
 def connect_to_rs_db():
-    return AsyncMotorClient('mongodb://localhost:27017/aggtrade_data_client').get_default_database()
+    return AsyncMotorClient('mongodb://localhost:27017/ohlc_data').get_default_database()
 
 
-def connect_to_ta_lines_db():
-    return AsyncMotorClient('mongodb://localhost:27017/TA_RS_VOL').get_default_database()
+def async_connect_to_aggtrade_data_db():
+    return AsyncMotorClient('mongodb://localhost:27017/aggtrade_data').get_default_database()
+
+
+def connect_to_aggtrade_data_db():
+    return MongoClient('mongodb://localhost:27017/aggtrade_data').get_default_database()
 
 
 def connect_to_final_signal_db():
@@ -54,17 +58,16 @@ def connect_to_ta_analysis_db():
 
 
 
-async def insert_many_from_dict_async_two(db, data: dict):
-    insert_many_from_dict_async_one(db, data)
+async def insert_many_to_aggtrade_db(data: dict):
+    insert_many_from_dict_async_one(async_connect_to_aggtrade_data_db(), data)
 
 
 async def rs_insert_many_from_dict_async_two(data: dict):
     insert_many_from_dict_async_one(connect_to_rs_db(), data)
 
 
-def insert_one_from_dict(database, data):
-    for key in list(data.keys()):
-        database.get_collection(key).insert_one(data[key])
+def insert_one_from_dict(database, symbol, data):
+    database.get_collection(symbol).insert_one(data)
 
 
 def insert_many_from_dict_async_one(database, data):
