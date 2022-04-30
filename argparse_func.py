@@ -1,7 +1,6 @@
 import argparse
 from inspect import getmembers, isfunction
 import pkgutil
-from typing import Callable
 import logging
 import logs
 
@@ -9,7 +8,7 @@ PROGRAM_NAME = 'Algotrading-Crypto'
 WS_TRADES = 'ws-trades'
 TA_ANALYSIS = 'ta-analysis'
 TA_SIGNAL = 'ta-signal'
-ALPHA_ALGO = 'alpha-algo'
+transform_agtrades = 'transform-aggtrades'
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -23,8 +22,6 @@ def algo_argparse():
 
     parent_parser.add_argument("-v", "--verbosity", default=0, action="count",
                                help="increase logging verbosity (up to 5)")
-    parent_parser.add_argument("--debug-secs", default=900, required=False, type=int,
-                               help="print heartbeat each X seconds")
 
     subparser = parent_parser.add_subparsers(dest="command")
 
@@ -32,13 +29,20 @@ def algo_argparse():
         subparser.add_parser(element.name.replace("_", "-"))
         pass
 
-    subparser.choices[ALPHA_ALGO].add_argument("--hello", default=900, required=True, type=int,
-                                                 help="print heartbeat each X seconds")
+    subparser.choices[transform_agtrades].add_argument(f"--{transform_agtrades}-timeframe-in-secs", required=True, type=int,
+                                                       help="chart timeframe")
+    subparser.choices[transform_agtrades].add_argument(f"--{transform_agtrades}-interval-in-secs", required=True, type=int,
+                                                       help="chart calculate each 'time interval'")
     return parent_parser.parse_args()
+
 
 def get_execute_function(parsed_args):
     import tasks
     execute_functions = []
+    args = []
+
+    command_group = parsed_args.command.replace("-", "_")
+
 
     for element in pkgutil.iter_modules(tasks.__path__):
         if element.name == parsed_args.command.replace("-", "_"):
@@ -49,7 +53,7 @@ def get_execute_function(parsed_args):
                     execute_functions.append(function[1])
 
             if len(execute_functions) == 1:
-                return execute_functions[0]
+                return execute_functions[0](vars(parsed_args))
             else:
                 LOG.error("Task modules need one and only one callable function instead of %s.", execute_functions)
                 exit(1)

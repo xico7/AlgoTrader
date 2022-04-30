@@ -86,6 +86,15 @@ def get_minutes_after_ts(symbol, timestamp):
     }))[::-1]
 
 
+def get_timeframe_db_last_minute(timeframe):
+    try:
+        from tasks.transform_aggtrades import END_TS
+        return 60000 + list(mongo.connect_to_timeframe_db(timeframe).get_collection("BTCUSDT").find(
+            {END_TS: {MongoDB.HIGHER_EQ: 0}}))[-1][END_TS]
+    except IndexError as e:
+        return get_last_minute(get_current_time_ms())
+
+
 def get_current_time() -> int:
     return int(time.time())
 
@@ -94,10 +103,34 @@ def get_current_time_ms() -> int:
     return int(str(int(time.time())) + "000")
 
 
+def debug_prints(start_time):
+    iteration_time = time.ctime(int(str(int(start_time)).replace("000", "")))
+    time_now = time.ctime(time.time())
+    print(f"the time is now {time_now}")
+    print(f"finished minute {iteration_time}")
+    print("exec time in milliseconds", get_current_time_ms() - start_time)
+
+
+def sec_to_ms(time_value):
+    return int(str(time_value) + "000")
+
+
 def get_last_minute(timestamp):
+    if len(str(timestamp)) == 13:
+        while timestamp % 60000 != 0:
+            timestamp -= 1000
+        return timestamp
     while timestamp % 60 != 0:
         timestamp -= 1
     return timestamp
+
+
+def is_new_minute(current_minute, current_time):
+    if len(str(current_time)) == 13:
+        if get_last_minute(current_time) != current_minute:
+            return True
+    if get_last_minute(current_time) != current_minute:
+        return True
 
 
 def remove_usdt(symbols: Union[List[str], str]):
@@ -129,6 +162,7 @@ def usdt_symbols_stream(type_of_trade: str) -> list:
     return [f"{symbol.lower()}{type_of_trade}" for symbol in binance_symbols]
 
 
+#TODO: isto não está a fazer nada.. lol
 def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
     symbols = usdt_symbols_stream(type_of_trade)
     bnb_symbols = []
@@ -253,18 +287,28 @@ def create_last_day_rs_chart(timestamp, rs_vol_db):
     return all_symbols_data
 
 
-def get_counter(number):
-    counter = 0
-    if number < 0:
-        while number < 0:
-            number += 0.5
-            counter -= 1
-    else:
-        while number > 0:
-            number -= 0.5
-            counter += 1
+# def get_counter(number):
+#     counter = 0
+#     if number < 0:
+#         while number < 0:
+#             number += 0.5
+#             counter -= 1
+#     else:
+#         while number > 0:
+#             number -= 0.5
+#             counter += 1
+#
+#     return counter
 
-    return counter
+
+def get_counter(min_value, range, price):
+    counter = 0
+    difference = price - min_value
+    while difference > 0:
+        difference -= range
+        counter += 1
+
+    return str(counter)
 
 
 def query_rs_signal_chart(timestamp):

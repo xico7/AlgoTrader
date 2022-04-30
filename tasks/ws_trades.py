@@ -51,7 +51,6 @@ async def execute_ws_trades(alive_debug_secs):
         while True:
             try:
 
-
                 ws_trade = await tscm.recv()
                 aggtrade_data = ws_trade['data']
                 aggtrade_symbol_pair = aggtrade_data[SYMBOL]
