@@ -3,7 +3,7 @@ import time
 EVENT_TS = "E"
 PRICE = "p"
 QUANTITY = 'q'
-END_TS = "End_timestamp"
+END_TS = "end_timestamp"
 
 
 def transform_ws_trades(args):
@@ -38,10 +38,11 @@ def transform_ws_trades(args):
             symbols_volume_chart[symbol] = {"last_price_counter": get_counter(min_value, price_range, float(list_trades[-1][PRICE]))}
             symbols_volume_chart[symbol]["last_price"] = float(list_trades[-1][PRICE])
             symbols_volume_chart[symbol][END_TS] = starting_execution_ts
-            symbols_volume_chart[symbol]["Begin_timestamp"] = begin_ts
+            symbols_volume_chart[symbol]["begin_timestamp"] = begin_ts
             symbols_volume_chart[symbol]["range_percentage"] = (max_value - min_value) * 100 / max_value
             symbols_volume_chart[symbol]["min"] = min_value
             symbols_volume_chart[symbol]["max"] = max_value
+            symbols_volume_chart[symbol]["total_volume"] = total_volume
 
             for elem in list_trades:
                 elem_counter = get_counter(min_value, price_range, float(elem[PRICE]))

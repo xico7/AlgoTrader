@@ -12,6 +12,7 @@ transform_agtrades = 'transform-aggtrades'
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
+
 def algo_argparse():
     import tasks
 
@@ -39,10 +40,6 @@ def algo_argparse():
 def get_execute_function(parsed_args):
     import tasks
     execute_functions = []
-    args = []
-
-    command_group = parsed_args.command.replace("-", "_")
-
 
     for element in pkgutil.iter_modules(tasks.__path__):
         if element.name == parsed_args.command.replace("-", "_"):

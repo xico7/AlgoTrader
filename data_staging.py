@@ -48,6 +48,8 @@ VOLUME = 'v'
 VALUE = 'Value'
 TOTAL_VOLUME = 'TotalVolume'
 
+second_ms_equivalent = '000'
+
 
 class MongoDB:
     EQUAL = '$eq'
@@ -77,7 +79,7 @@ def get_element_chart_percentage_line(pricevalue, rs_chart):
     return key_pricevalue[0]
 
 
-#TODO: refactor.. this is getting too many values.. i only need one.. perf implicactions.
+# TODO: refactor.. this is getting too many values.. i only need one.. perf implicactions.
 def get_minutes_after_ts(symbol, timestamp):
     one_min_db = mongo.connect_to_1m_ohlc_db()
     return list(one_min_db.get_collection(symbol).find({MongoDB.AND: [
@@ -100,11 +102,11 @@ def get_current_time() -> int:
 
 
 def get_current_time_ms() -> int:
-    return int(str(int(time.time())) + "000")
+    return int(str(int(time.time())) + second_ms_equivalent)
 
 
 def debug_prints(start_time):
-    iteration_time = time.ctime(int(str(int(start_time)).replace("000", "")))
+    iteration_time = time.ctime(int(str(int(start_time)).replace(second_ms_equivalent, "")))
     time_now = time.ctime(time.time())
     print(f"the time is now {time_now}")
     print(f"finished minute {iteration_time}")
@@ -112,17 +114,22 @@ def debug_prints(start_time):
 
 
 def sec_to_ms(time_value):
-    return int(str(time_value) + "000")
+    return int(str(time_value) + second_ms_equivalent)
 
 
 def get_last_minute(timestamp):
+    get_last_n_seconds(timestamp, 60)
+
+
+def get_last_n_seconds(timestamp, number_of_seconds):
     if len(str(timestamp)) == 13:
-        while timestamp % 60000 != 0:
+        while timestamp % int((str(number_of_seconds) + second_ms_equivalent)) != 0:
             timestamp -= 1000
         return timestamp
-    while timestamp % 60 != 0:
+    while timestamp % number_of_seconds != 0:
         timestamp -= 1
     return timestamp
+
 
 
 def is_new_minute(current_minute, current_time):
@@ -162,7 +169,7 @@ def usdt_symbols_stream(type_of_trade: str) -> list:
     return [f"{symbol.lower()}{type_of_trade}" for symbol in binance_symbols]
 
 
-#TODO: isto não está a fazer nada.. lol
+# TODO: isto não está a fazer nada.. lol
 def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
     symbols = usdt_symbols_stream(type_of_trade)
     bnb_symbols = []
@@ -179,13 +186,17 @@ def non_existing_record(collection_feed, timestamp):
     return not bool(collection_feed.find({TS: {MongoDB.EQUAL: timestamp}}).count())
 
 
-def get_coin_fund_ratio(symbol_pairs: dict, symbols_information: dict):
+def get_symbols_normalized_fund_ratio(symbol_pairs: dict, symbols_information: dict):
     coin_ratio = {}
+    total_marketcap = 0
+    for symbol_info in symbols_information:
+        if symbol_info[SYMBOL].upper() in symbol_pairs:
+            total_marketcap += symbol_info['market_cap']
 
     for symbol_info in symbols_information:
         current_symbol = symbol_info[SYMBOL].upper()
         if current_symbol in symbol_pairs:
-            coin_ratio.update({current_symbol: symbol_info['market_cap'] / symbol_info['current_price']})
+            coin_ratio.update({current_symbol+USDT: symbol_info['market_cap'] / symbol_info['current_price']})
 
     return coin_ratio
 
@@ -207,7 +218,7 @@ def query_db_documents(db_feed, collection, number_of_periods, current_minute):
     elif db_feed.name == db_to_timestamp.TA_RS_VOL.name:
         return db_feed.get_collection(collection).find_one(sort=[("E", -1)])
     else:
-        return NotImplementedError("Please implement.")
+        return NotImplementedError("Need to implement.")
 
 
 def query_latest_collection(db_feed, collection):
@@ -285,20 +296,6 @@ def create_last_day_rs_chart(timestamp, rs_vol_db):
         symbol_data = {}
 
     return all_symbols_data
-
-
-# def get_counter(number):
-#     counter = 0
-#     if number < 0:
-#         while number < 0:
-#             number += 0.5
-#             counter -= 1
-#     else:
-#         while number > 0:
-#             number -= 0.5
-#             counter += 1
-#
-#     return counter
 
 
 def get_counter(min_value, range, price):
