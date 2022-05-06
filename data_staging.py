@@ -6,20 +6,6 @@ import re
 import time
 from typing import Optional, Union, List
 import requests as requests
-from enum import Enum
-import numpy as np
-import talib
-from numpy import double
-
-
-#### OHLC ####
-
-OHLC_OPEN = 'o'
-OHLC_CLOSE = 'c'
-OHLC_HIGH = 'h'
-OHLC_LOW = 'l'
-
-##############
 
 
 #### Timeframes ####
@@ -36,20 +22,7 @@ ONE_DAY_IN_SECS = ONE_HOUR_IN_SECS * 24
 ###################
 
 USDT = "USDT"
-TS = 'timestamp'
-TIME = 'Time'
-TIMESTAMP = 't'
-SYMBOLS_VOLUME = 'symbols_volume'
-PRICE = 'Price'
-RS = 'RS'
-AVG_RS = 'average_rs'
 SYMBOL = 'symbol'
-VOLUME = 'v'
-VALUE = 'Value'
-TOTAL_VOLUME = 'TotalVolume'
-
-second_ms_equivalent = '000'
-
 
 class MongoDB:
     EQUAL = '$eq'
@@ -58,34 +31,6 @@ class MongoDB:
     HIGHER_EQ = '$gte'
     HIGHER = '$gt'
     AND = '$and'
-
-
-class db_to_timestamp(Enum):
-    OHLC_1day = 60 * 60 * 24
-    OHLC_5minutes = 60 * 5
-    TA_RS_VOL = None
-
-
-def get_element_chart_percentage_line(pricevalue, rs_chart):
-    key_pricevalue: tuple = (None, 999999999)
-    for k, v in rs_chart.items():
-        if int(k) > 0:
-            if pricevalue > v['Value'] and pricevalue < 999999999:
-                key_pricevalue = (k, pricevalue)
-        else:
-            if pricevalue < v['Value'] and pricevalue > key_pricevalue[1]:
-                key_pricevalue = (k, pricevalue)
-
-    return key_pricevalue[0]
-
-
-# TODO: refactor.. this is getting too many values.. i only need one.. perf implicactions.
-def get_minutes_after_ts(symbol, timestamp):
-    one_min_db = mongo.connect_to_1m_ohlc_db()
-    return list(one_min_db.get_collection(symbol).find({MongoDB.AND: [
-        {TIME: {MongoDB.HIGHER_EQ: timestamp}},
-        {TIME: {MongoDB.LOWER_EQ: timestamp + 60 * 1200}}]
-    }))[::-1]
 
 
 def get_timeframe_db_last_minute(timeframe):
@@ -182,10 +127,6 @@ def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
     return bnb_symbols
 
 
-def non_existing_record(collection_feed, timestamp):
-    return not bool(collection_feed.find({TS: {MongoDB.EQUAL: timestamp}}).count())
-
-
 def get_symbols_normalized_fund_ratio(symbol_pairs: dict, symbols_information: dict):
     coin_ratio = {}
     total_marketcap = 0
@@ -199,103 +140,6 @@ def get_symbols_normalized_fund_ratio(symbol_pairs: dict, symbols_information: d
             coin_ratio.update({current_symbol+USDT: symbol_info['market_cap'] / symbol_info['current_price']})
 
     return coin_ratio
-
-
-def query_db_documents(db_feed, collection, number_of_periods, current_minute):
-    def query_ohlc_db(ohlc_timeframe):
-        query = list(db_feed.get_collection(collection).find({MongoDB.AND: [
-            {TIME: {MongoDB.HIGHER_EQ: current_minute - ohlc_timeframe * (number_of_periods + 1)}},
-            {TIME: {MongoDB.LOWER_EQ: current_minute}}
-        ]
-        }))
-
-        return query[0] if number_of_periods == 1 else query
-
-    if db_feed.name == db_to_timestamp.OHLC_1day.name:
-        return query_ohlc_db(db_to_timestamp.OHLC_1day.value)
-    elif db_feed.name == db_to_timestamp.OHLC_5minutes.name:
-        return query_ohlc_db(db_to_timestamp.OHLC_5minutes.value)
-    elif db_feed.name == db_to_timestamp.TA_RS_VOL.name:
-        return db_feed.get_collection(collection).find_one(sort=[("E", -1)])
-    else:
-        return NotImplementedError("Need to implement.")
-
-
-def query_latest_collection(db_feed, collection):
-    return query_db_documents(db_feed, collection, 1, get_current_time())
-
-
-def query_rel_vol(current_minute, rel_vol_db, number_of_periods):
-    symbols_relative_volume = {}
-    for collection in rel_vol_db.list_collection_names():
-        symbol_last_n_periods_volume = 0
-        try:
-            for elem in query_db_documents(rel_vol_db, collection, number_of_periods, current_minute)[
-                        1:number_of_periods]:
-                symbol_last_n_periods_volume += elem[VOLUME] / number_of_periods
-            symbols_relative_volume[collection] = query_latest_collection(rel_vol_db, collection)[VOLUME] / symbol_last_n_periods_volume
-        except ZeroDivisionError:
-            continue
-        except IndexError:
-            continue
-    return symbols_relative_volume
-
-
-def query_atr(current_minute, atr_db, number_of_periods):
-    coins_fiveminutes_atr = {}
-    for collection in atr_db.list_collection_names():
-        high, low, close = [], [], []
-
-        for elem in query_db_documents(atr_db, collection, number_of_periods, current_minute)[:number_of_periods]:
-            high.append(elem['h'])
-            low.append(elem['l'])
-            close.append(elem['c'])
-
-        if len(high) == number_of_periods:
-            coins_fiveminutes_atr[collection] = \
-            talib.ATR(np.array(high), np.array(low), np.array(close), timeperiod=number_of_periods - 1)[-1]
-
-    return coins_fiveminutes_atr
-
-
-def add_elem_to_chart(element, symbols_data, symbol_moment_price):
-    counter = get_counter(element['Price'] * 100 / symbol_moment_price - 100)
-
-    if counter not in symbols_data:
-        symbols_data.update({str(counter): {VALUE: symbol_moment_price * (1 + (counter * 0.01)),
-                                            VOLUME: element[VOLUME], AVG_RS: element['RS']}}, )
-    else:
-        symbols_data[str(counter)][VOLUME] += element[VOLUME]
-        symbols_data[str(counter)][AVG_RS] += element[VOLUME] / symbols_data[counter][VOLUME] * element['RS']
-
-    return symbols_data
-
-
-def create_last_day_rs_chart(timestamp, rs_vol_db):
-    timestamp_minus_one_day = timestamp - (60 * 60 * 24)
-    rel_strength_db = mongo.connect_to_rs_db()
-
-
-    coins_moment_prices = {}
-    for col in rs_vol_db.list_collection_names():
-        coins_moment_prices[col] = query_latest_collection(rs_vol_db, col)['p']
-
-    symbol_data, all_symbols_data = {}, {}
-    for col in rel_strength_db.list_collection_names():
-        for elem in list(rel_strength_db.get_collection(col).find(
-                {MongoDB.AND: [{TIME: {MongoDB.HIGHER_EQ: timestamp_minus_one_day}},
-                               {TIME: {MongoDB.LOWER_EQ: timestamp_minus_one_day + ONE_DAY_IN_SECS}}]}).rewind()):
-            add_elem_to_chart(elem, symbol_data, float(coins_moment_prices[col]))
-
-        volume_sum = 0
-        for value in list(symbol_data.values()):
-            volume_sum += value[VOLUME]
-        for value in list(symbol_data.values()):
-            value['pct_vol'] = value[VOLUME] / volume_sum
-        all_symbols_data.update({col: symbol_data})
-        symbol_data = {}
-
-    return all_symbols_data
 
 
 def get_counter(min_value, range, price):
