@@ -8,7 +8,7 @@ END_TS = "end_timestamp"
 
 def transform_ws_trades(args):
     from MongoDB.db_actions import connect_to_aggtrade_data_db, insert_many_to_timeframe_db
-    from data_staging import get_current_time_ms, get_counter, get_timeframe_db_last_minute, MongoDB, sec_to_ms, debug_prints
+    from data_staging import get_current_second_in_ms, get_counter, get_timeframe_db_last_minute, MongoDB, sec_to_ms, debug_prints
 
     starting_execution_ts = get_timeframe_db_last_minute(args["transform_aggtrades_timeframe_in_secs"])
     timeframe_in_ms = sec_to_ms(args["transform_aggtrades_timeframe_in_secs"])
@@ -59,5 +59,5 @@ def transform_ws_trades(args):
         debug_prints(starting_execution_ts)
         starting_execution_ts += int(str(int(args["transform_aggtrades_interval_in_secs"])) + "000")
 
-        while starting_execution_ts > get_current_time_ms():
+        while starting_execution_ts > get_current_second_in_ms():
             time.sleep(1)

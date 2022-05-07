@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient as AsyncMotorClient
 from pymongo.errors import OperationFailure
 
+sp500_db_collection = "sp500_volume_highlow_chart"
 
 def connect_to_algo_alpha_db():
     return MongoClient('mongodb://localhost:27017/algo_alpha').get_default_database()
@@ -24,12 +25,16 @@ def connect_to_sp500_db():
     return MongoClient(f'mongodb://localhost:27017/sp500_data').get_default_database()
 
 
+def connect_to_sp500_db_collection():
+    return connect_to_sp500_db().get_collection(sp500_db_collection)
+
+
 async def async_insert_many_to_aggtrade_db(data: dict):
     insert_many_from_dict_async_one(async_connect_to_aggtrade_data_db(), data)
 
 
 def insert_one_to_sp500_db(data: dict):
-    insert_one(connect_to_sp500_db(), "sp500_volume_highlow_chart", data)
+    insert_one(connect_to_sp500_db(), sp500_db_collection, data)
 
 
 def insert_many_to_timeframe_db(timeframe, data):

@@ -40,11 +40,11 @@ class DatabaseCache:
 
 
 async def execute_ws_trades(alive_debug_secs):
-    from data_staging import get_current_time, print_alive_if_passed_timestamp, get_data_from_keys, usdt_with_bnb_symbols_stream
-    from MongoDB.db_actions import insert_many_to_aggtrade_db
+    from data_staging import get_current_second, print_alive_if_passed_timestamp, get_data_from_keys, usdt_with_bnb_symbols_stream
+    from MongoDB.db_actions import async_insert_many_to_aggtrade_db
     cache = DatabaseCache()
     pycache_counter = 0
-    debug_running_execution = get_current_time()
+    debug_running_execution = get_current_second()
 
     async with BinanceSocketManager(
             await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_stream(AGGREGATED_TRADE_WS)) as tscm:
@@ -60,7 +60,7 @@ async def execute_ws_trades(alive_debug_secs):
                 cache.aggtrade_data.append_to_list_update(aggtrade_symbol_pair, get_data_from_keys(aggtrade_data, EVENT_TIMESTAMP, PRICE_P, QUANTITY))
 
                 if pycache_counter > AGGTRADE_PYCACHE:
-                    await insert_many_to_aggtrade_db(cache.aggtrade_data)
+                    await async_insert_many_to_aggtrade_db(cache.aggtrade_data)
                     cache.aggtrade_data.clear()
                     pycache_counter -= AGGTRADE_PYCACHE
 
