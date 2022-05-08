@@ -5,9 +5,6 @@ from pymongo.errors import OperationFailure
 
 sp500_db_collection = "sp500_volume_highlow_chart"
 
-def connect_to_algo_alpha_db():
-    return MongoClient('mongodb://localhost:27017/algo_alpha').get_default_database()
-
 
 def async_connect_to_aggtrade_data_db():
     return AsyncMotorClient('mongodb://localhost:27017/aggtrade_data').get_default_database()
@@ -19,6 +16,10 @@ def connect_to_aggtrade_data_db():
 
 def connect_to_timeframe_db(timeframe):
     return MongoClient(f'mongodb://localhost:27017/volume_highlow_chart_{timeframe}').get_default_database()
+
+
+def connect_to_db(db_name):
+    return MongoClient(f'mongodb://localhost:27017/{db_name}').get_default_database()
 
 
 def connect_to_sp500_db():
@@ -37,10 +38,10 @@ def insert_one_to_sp500_db(data: dict):
     insert_one(connect_to_sp500_db(), sp500_db_collection, data)
 
 
-def insert_many_to_timeframe_db(timeframe, data):
+def insert_many_to_db(db_name, data):
     for key in list(data.keys()):
         try:
-            connect_to_timeframe_db(timeframe).get_collection(key).insert_one(data[key])
+            connect_to_db(db_name).get_collection(key).insert_one(data[key])
         except pymongo.errors.DuplicateKeyError:
             # skip document because it already exists in new collection
             continue
@@ -68,4 +69,7 @@ def create_db_time_index(db_feed, timestamp_var='E'):
         except OperationFailure as e:
             continue
 
+
+# def connect_to_algo_alpha_db():
+#     return MongoClient('mongodb://localhost:27017/algo_alpha').get_default_database()
 

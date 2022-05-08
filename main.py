@@ -10,7 +10,7 @@ def main():
     call = argp.get_execute_function(parser)
 
     if inspect.iscoroutinefunction(call):
-        asyncio.run(asyncmain(call, parser.debug_secs))
+        asyncio.run(asyncmain(call))
     else:
         call()
 

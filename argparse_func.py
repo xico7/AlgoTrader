@@ -1,14 +1,13 @@
 import argparse
+import inspect
 from inspect import getmembers, isfunction
 import pkgutil
 import logging
 import logs
 
 PROGRAM_NAME = 'Algotrading-Crypto'
-WS_TRADES = 'ws-trades'
-TA_ANALYSIS = 'ta-analysis'
-TA_SIGNAL = 'ta-signal'
-transform_agtrades = 'transform-aggtrades'
+fund_data = 'fund-data'
+transform_trade_data = 'transform-trade-data'
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -30,10 +29,14 @@ def algo_argparse():
         subparser.add_parser(element.name.replace("_", "-"))
         pass
 
-    subparser.choices[transform_agtrades].add_argument(f"--{transform_agtrades}-timeframe-in-secs", required=True, type=int,
-                                                       help="chart timeframe")
-    subparser.choices[transform_agtrades].add_argument(f"--{transform_agtrades}-interval-in-secs", required=True, type=int,
-                                                       help="chart calculate each 'time interval'")
+    # TODO: Improve choices, find all collections in MongoDB and those are the choices.
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True,
+                                                         help="TODO")
+
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-timeframe-in-secs", required=True, type=int,
+                                                         help="TODO")
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-interval-in-secs", required=True, type=int,
+                                                         help="chart calculate each 'time interval")
     return parent_parser.parse_args()
 
 
@@ -50,7 +53,8 @@ def get_execute_function(parsed_args):
                     execute_functions.append(function[1])
 
             if len(execute_functions) == 1:
-                return execute_functions[0](vars(parsed_args))
+                return execute_functions[0](vars(parsed_args)) if inspect.getfullargspec(execute_functions[0]).args \
+                        else execute_functions[0]
             else:
                 LOG.error("Task modules need one and only one callable function instead of %s.", execute_functions)
                 exit(1)

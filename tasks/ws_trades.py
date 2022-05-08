@@ -39,7 +39,7 @@ class DatabaseCache:
         return self._cached_aggtrade_data
 
 
-async def execute_ws_trades(alive_debug_secs):
+async def execute_ws_trades():
     from data_staging import get_current_second, print_alive_if_passed_timestamp, get_data_from_keys, usdt_with_bnb_symbols_stream
     from MongoDB.db_actions import async_insert_many_to_aggtrade_db
     cache = DatabaseCache()
@@ -64,8 +64,8 @@ async def execute_ws_trades(alive_debug_secs):
                     cache.aggtrade_data.clear()
                     pycache_counter -= AGGTRADE_PYCACHE
 
-                if print_alive_if_passed_timestamp(debug_running_execution + alive_debug_secs):
-                    debug_running_execution += alive_debug_secs
+                if print_alive_if_passed_timestamp(debug_running_execution + 90):
+                    debug_running_execution += 90
 
             except ServerSelectionTimeoutError as e:
                 if "localhost:27017" in e.args[0]:

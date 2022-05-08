@@ -5,6 +5,20 @@ import time
 from typing import Union, List
 import requests as requests
 
+from tasks.transform_trade_data import EVENT_TS, PRICE, QUANTITY
+
+SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'LUNAUSDT',
+                            'DOGEUSDT',
+                            'AVAXUSDT', 'SHIBUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
+                            'BCHUSDT',
+                            'ALGOUSDT',
+                            'MANAUSDT', 'XLMUSDT', 'AXSUSDT', 'VETUSDT', 'FTTUSDT', 'EGLDUSDT', 'ATOMUSDT',
+                            'ICPUSDT',
+                            'FILUSDT',
+                            'HBARUSDT', 'SANDUSDT', 'THETAUSDT', 'FTMUSDT',
+                            'NEARUSDT', 'XMRUSDT', 'KLAYUSDT', 'GALAUSDT', 'HNTUSDT', 'GRTUSDT',
+                            'LRCUSDT']
+
 
 #### Timeframes ####
 
@@ -29,6 +43,7 @@ TEN_SECONDS_IN_MS = int(str(TEN_SECONDS) + SECONDS_TO_MS_APPEND)
 
 USDT = "USDT"
 SYMBOL = 'symbol'
+BEGIN_TIMESTAMP = "begin_timestamp"
 
 class MongoDB:
     EQUAL = '$eq'
@@ -39,10 +54,21 @@ class MongoDB:
     AND = '$and'
 
 
-def get_timeframe_db_last_minute(timeframe):
+def remove_usdt(symbols: Union[List[str], str]):
+    if isinstance(symbols, str):
+        try:
+            return re.match('(^(.+?)USDT)', symbols).groups()[1].upper()
+        except AttributeError as e:
+            return None
+    else:
+        return [re.match('(^(.+?)USDT)', symbol).groups()[1].upper() for symbol in symbols]
+
+
+def query_db_last_minute(db_name):
     try:
-        from tasks.transform_aggtrades import END_TS
-        return ONE_MIN_IN_MS + list(mongo.connect_to_timeframe_db(timeframe).get_collection("BTCUSDT").find(
+        from tasks.transform_trade_data import END_TS
+        return ONE_MIN_IN_MS + list(mongo.connect_to_timeframe_db(db_name).get_collection(
+            mongo.connect_to_timeframe_db(db_name).list_collection_names()[0]).find(
             {END_TS: {MongoDB.HIGHER_EQ: 0}}))[-1][END_TS]
     except IndexError as e:
         return get_last_minute(get_current_second_in_ms())
@@ -61,7 +87,7 @@ def sec_to_ms(time_value):
 
 
 def get_last_minute(timestamp):
-    get_last_n_seconds(timestamp, 60)
+    return get_last_n_seconds(timestamp, 60)
 
 
 def get_last_second(timestamp):
@@ -86,22 +112,67 @@ def is_new_minute(current_minute, current_time):
         return True
 
 
+def get_timeframe():
+    sp500_elements = list(mongo.connect_to_sp500_db_collection().find({BEGIN_TIMESTAMP: {MongoDB.HIGHER_EQ: 0}}))
+    if sp500_elements:
+        return sp500_elements[-1][BEGIN_TIMESTAMP]
+    else:
+        return get_last_n_seconds(get_current_second_in_ms(), 60)
+
+
+def fill_symbol_prices(symbol_prices, end_ts):
+    for symbol in symbol_prices.keys():
+        list_trades = list(mongo.connect_to_aggtrade_data_db().get_collection(symbol).find(
+            {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: end_ts - FIFTEEN_MIN_IN_MS}},
+                           {EVENT_TS: {MongoDB.LOWER_EQ: end_ts}}]}))
+
+        if list_trades:
+            symbol_prices[symbol] = float(list_trades[-1][PRICE])
+
+    return
+
+
+def coin_ratio():
+    from tasks.ws_trades import coingecko_marketcap_api_link
+    return get_symbols_normalized_fund_ratio(remove_usdt(SP500_SYMBOLS_USDT_PAIRS), requests.get(coingecko_marketcap_api_link).json())
+
+
+def sum_values(key_values):
+    total = 0
+    for value in key_values.values():
+        total += value
+
+    return total
+
+
+def insert_fund_data(values, start_time, coin_ratios):
+    symbol_ratio_value = {}
+    symbol_volumes = {SP500_SYMBOLS_USDT_PAIRS[i]: 0 for i, elem in enumerate(SP500_SYMBOLS_USDT_PAIRS)}
+    for symbol in values.keys():
+        list_trades = list(mongo.connect_to_aggtrade_data_db().get_collection(symbol).find(
+            {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: start_time}},
+                           {EVENT_TS: {MongoDB.LOWER_EQ: start_time + TEN_SECONDS_IN_MS}}]}))
+
+        if list_trades:
+            values[symbol] = float(list_trades[-1][PRICE])
+
+            for elem in list_trades:
+                symbol_volumes[symbol] += (float(elem[PRICE]) * float(elem[QUANTITY]))
+
+    for symbol in values:
+        symbol_ratio_value[symbol] = values[symbol] * coin_ratios[symbol]
+
+    total_volume = sum_values(symbol_volumes)
+    total_fund_value = sum_values(symbol_ratio_value)
+    mongo.insert_one_to_sp500_db({BEGIN_TIMESTAMP: start_time, "volume": total_volume, "value": total_fund_value})
+
+
 def debug_prints(start_time):
     iteration_time = time.ctime(int(str(int(start_time)).replace(SECONDS_TO_MS_APPEND, "")))
     time_now = time.ctime(time.time())
     print(f"the time is now {time_now}")
     print(f"finished minute {iteration_time}")
     print("exec time in milliseconds", get_current_second_in_ms() - start_time)
-
-
-def remove_usdt(symbols: Union[List[str], str]):
-    if isinstance(symbols, str):
-        try:
-            return re.match('(^(.+?)USDT)', symbols).groups()[1].upper()
-        except AttributeError as e:
-            return None
-    else:
-        return [re.match('(^(.+?)USDT)', symbol).groups()[1].upper() for symbol in symbols]
 
 
 def get_data_from_keys(data, *keys):
