@@ -6,7 +6,7 @@ In order to run this program you need MongoDB installed and running, after that 
 
 To insert all trades separated by each symbol in a MongoDB database run the program with the following arguments:
 
-python3 ./main.py --debug-secs 90 ws-trades
+python3 ./main.py ws-trades
 
 After this you can also transform those trade information ( Price and volume ) into more useful data, like so:
 
