@@ -4,14 +4,15 @@ from motor.motor_asyncio import AsyncIOMotorClient as AsyncMotorClient
 from pymongo.errors import OperationFailure
 
 sp500_db_collection = "sp500_volume_highlow_chart"
-
+fund_trades_database_name = "sp500_data"
+usdt_trades_database_name = "aggtrade_data"
 
 def async_connect_to_aggtrade_data_db():
-    return AsyncMotorClient('mongodb://localhost:27017/aggtrade_data').get_default_database()
+    return AsyncMotorClient(f'mongodb://localhost:27017/{usdt_trades_database_name}').get_default_database()
 
 
 def connect_to_aggtrade_data_db():
-    return MongoClient('mongodb://localhost:27017/aggtrade_data').get_default_database()
+    return MongoClient(f'mongodb://localhost:27017/{usdt_trades_database_name}').get_default_database()
 
 
 def connect_to_timeframe_db(timeframe):
@@ -23,7 +24,7 @@ def connect_to_db(db_name):
 
 
 def connect_to_sp500_db():
-    return MongoClient(f'mongodb://localhost:27017/sp500_data').get_default_database()
+    return MongoClient(f'mongodb://localhost:27017/{fund_trades_database_name}').get_default_database()
 
 
 def connect_to_sp500_db_collection():

@@ -12,12 +12,11 @@ def transform_trade_data(args):
     from data_staging import get_current_second_in_ms, get_counter, query_db_last_minute, MongoDB, sec_to_ms, debug_prints
 
     db_type = args['transform_trade_data_db_name']
-    db_timeframe = args["transform_trade_data_timeframe_in_secs"]
-    db_name = f"{db_type}_timeframe_{db_timeframe}"
+    timeframe, time_interval = args["transform_trade_data_timeframe_in_secs"], args['transform_trade_data_interval_in_secs']
+    db_name = f"{db_type}_timeframe_{timeframe}_interval_{time_interval}"
 
     starting_execution_ts = query_db_last_minute(db_name)
-    timeframe_in_ms = sec_to_ms(db_timeframe)
-    begin_ts = starting_execution_ts - timeframe_in_ms
+    timeframe_in_ms = sec_to_ms(timeframe)
     price_volume_chart = {}
 
     while True:
@@ -43,7 +42,7 @@ def transform_trade_data(args):
             price_volume_chart[collection] = {"last_price_counter": get_counter(min_value, price_range, float(list_trades[-1][PRICE]))}
             price_volume_chart[collection]["last_price"] = float(list_trades[-1][PRICE])
             price_volume_chart[collection][END_TS] = starting_execution_ts
-            price_volume_chart[collection]["begin_timestamp"] = begin_ts
+            price_volume_chart[collection]["begin_timestamp"] = starting_execution_ts - timeframe_in_ms
             price_volume_chart[collection]["range_percentage"] = (max_value - min_value) * 100 / max_value
             price_volume_chart[collection]["min"] = min_value
             price_volume_chart[collection]["max"] = max_value
@@ -62,7 +61,9 @@ def transform_trade_data(args):
         insert_many_to_db(db_name, price_volume_chart)
 
         debug_prints(starting_execution_ts)
-        starting_execution_ts += int(str(int(args["transform_trade_data_interval_in_secs"])) + "000")
+        starting_execution_ts += int(str(int(time_interval)) + "000")
 
         while starting_execution_ts > get_current_second_in_ms():
             time.sleep(1)
+
+        time.sleep(30)

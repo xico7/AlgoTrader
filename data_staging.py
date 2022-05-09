@@ -5,6 +5,7 @@ import time
 from typing import Union, List
 import requests as requests
 
+from argparse_func import LOG
 from tasks.transform_trade_data import EVENT_TS, PRICE, QUANTITY
 
 SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'LUNAUSDT',
@@ -126,8 +127,10 @@ def fill_symbol_prices(symbol_prices, end_ts):
             {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: end_ts - FIFTEEN_MIN_IN_MS}},
                            {EVENT_TS: {MongoDB.LOWER_EQ: end_ts}}]}))
 
-        if list_trades:
-            symbol_prices[symbol] = float(list_trades[-1][PRICE])
+        if not list_trades:
+            LOG.error("No trades present in aggtrade, make sure trade aggregator is running.")
+            raise
+        symbol_prices[symbol] = float(list_trades[-1][PRICE])
 
     return
 
@@ -143,28 +146,6 @@ def sum_values(key_values):
         total += value
 
     return total
-
-
-def insert_fund_data(values, start_time, coin_ratios):
-    symbol_ratio_value = {}
-    symbol_volumes = {SP500_SYMBOLS_USDT_PAIRS[i]: 0 for i, elem in enumerate(SP500_SYMBOLS_USDT_PAIRS)}
-    for symbol in values.keys():
-        list_trades = list(mongo.connect_to_aggtrade_data_db().get_collection(symbol).find(
-            {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: start_time}},
-                           {EVENT_TS: {MongoDB.LOWER_EQ: start_time + TEN_SECONDS_IN_MS}}]}))
-
-        if list_trades:
-            values[symbol] = float(list_trades[-1][PRICE])
-
-            for elem in list_trades:
-                symbol_volumes[symbol] += (float(elem[PRICE]) * float(elem[QUANTITY]))
-
-    for symbol in values:
-        symbol_ratio_value[symbol] = values[symbol] * coin_ratios[symbol]
-
-    total_volume = sum_values(symbol_volumes)
-    total_fund_value = sum_values(symbol_ratio_value)
-    mongo.insert_one_to_sp500_db({BEGIN_TIMESTAMP: start_time, "volume": total_volume, "value": total_fund_value})
 
 
 def debug_prints(start_time):

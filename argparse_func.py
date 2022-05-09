@@ -3,6 +3,9 @@ import inspect
 from inspect import getmembers, isfunction
 import pkgutil
 import logging
+
+from pymongo import MongoClient
+
 import logs
 
 PROGRAM_NAME = 'Algotrading-Crypto'
@@ -30,8 +33,9 @@ def algo_argparse():
         pass
 
     # TODO: Improve choices, find all collections in MongoDB and those are the choices.
-    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True,
-                                                         help="TODO")
+    from MongoDB.db_actions import fund_trades_database_name, usdt_trades_database_name
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO",
+                                                         choices=[fund_trades_database_name, usdt_trades_database_name])
 
     subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-timeframe-in-secs", required=True, type=int,
                                                          help="TODO")

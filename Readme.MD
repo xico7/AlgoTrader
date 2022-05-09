@@ -8,8 +8,13 @@ To insert all trades separated by each symbol in a MongoDB database run the prog
 
 python3 ./main.py ws-trades
 
+python3 ./main.py fund-data
+
 After this you can also transform those trade information ( Price and volume ) into more useful data, like so:
 
-python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 60 --transform-trade-data-interval-in-secs 20 --transform-trade-data-db-name aggtrade_data
+
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 1800 --transform-trade-data-interval-in-secs 60 --transform-trade-data-db-name aggtrade_data
+
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 1800 --transform-trade-data-interval-in-secs 60 --transform-trade-data-db-name sp500_data
 
 TODO: explain timeframe and data interval.
