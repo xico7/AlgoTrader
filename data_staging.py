@@ -1,4 +1,7 @@
 from datetime import datetime
+
+from pymongo.errors import OperationFailure
+
 import MongoDB.db_actions as mongo
 import re
 import time
@@ -73,6 +76,8 @@ def query_db_last_minute(db_name):
             {END_TS: {MongoDB.HIGHER_EQ: 0}}))[-1][END_TS]
     except IndexError as e:
         return get_last_minute(get_current_second_in_ms())
+    except OperationFailure as e:
+        return get_last_minute(get_current_second_in_ms())
 
 
 def get_current_second() -> int:
@@ -114,11 +119,10 @@ def is_new_minute(current_minute, current_time):
 
 
 def get_timeframe():
-    sp500_elements = list(mongo.connect_to_sp500_db_collection().find({BEGIN_TIMESTAMP: {MongoDB.HIGHER_EQ: 0}}))
-    if sp500_elements:
-        return sp500_elements[-1][BEGIN_TIMESTAMP]
-    else:
-        return get_last_n_seconds(get_current_second_in_ms(), 60)
+    if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({EVENT_TS: {MongoDB.HIGHER_EQ: 0}})):
+        return sp500_elements[-1][EVENT_TS]
+
+    return get_last_n_seconds(get_current_second_in_ms(), 60)
 
 
 def fill_symbol_prices(symbol_prices, end_ts):
@@ -130,7 +134,7 @@ def fill_symbol_prices(symbol_prices, end_ts):
         if not list_trades:
             LOG.error("No trades present in aggtrade, make sure trade aggregator is running.")
             raise
-        symbol_prices[symbol] = float(list_trades[-1][PRICE])
+        symbol_prices[symbol] = float(list_trades[1][PRICE])
 
     return
 

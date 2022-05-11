@@ -39,8 +39,9 @@ def transform_trade_data(args):
             min_value = min(symbol_price)
             price_range = (max_value - min_value) / 10
 
-            price_volume_chart[collection] = {"last_price_counter": get_counter(min_value, price_range, float(list_trades[-1][PRICE]))}
-            price_volume_chart[collection]["last_price"] = float(list_trades[-1][PRICE])
+            most_recent_price = float(list_trades[1][PRICE])
+            price_volume_chart[collection] = {"last_price_counter": get_counter(min_value, price_range, most_recent_price)}
+            price_volume_chart[collection]["last_price"] = most_recent_price
             price_volume_chart[collection][END_TS] = starting_execution_ts
             price_volume_chart[collection]["begin_timestamp"] = starting_execution_ts - timeframe_in_ms
             price_volume_chart[collection]["range_percentage"] = (max_value - min_value) * 100 / max_value

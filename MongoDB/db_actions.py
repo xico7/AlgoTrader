@@ -15,8 +15,8 @@ def connect_to_aggtrade_data_db():
     return MongoClient(f'mongodb://localhost:27017/{usdt_trades_database_name}').get_default_database()
 
 
-def connect_to_timeframe_db(timeframe):
-    return MongoClient(f'mongodb://localhost:27017/volume_highlow_chart_{timeframe}').get_default_database()
+def connect_to_timeframe_db(db_name):
+    return MongoClient(f'mongodb://localhost:27017/{db_name}').get_default_database()
 
 
 def connect_to_db(db_name):

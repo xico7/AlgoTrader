@@ -25,7 +25,7 @@ def insert_fund_data():
                                {EVENT_TS: {MongoDB.LOWER_EQ: timeframe + TEN_SECONDS_IN_MS}}]}))
 
             if list_trades:
-                symbol_prices[symbol] = float(list_trades[-1][PRICE])
+                symbol_prices[symbol] = float(list_trades[1][PRICE])
 
                 for elem in list_trades:
                     symbol_volumes[symbol] += (float(elem[PRICE]) * float(elem[QUANTITY]))
