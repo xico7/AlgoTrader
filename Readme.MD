@@ -13,8 +13,16 @@ python3 ./main.py fund-data
 After this you can also transform those trade information ( Price and volume ) into more useful data, like so:
 
 
-python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 1800 --transform-trade-data-interval-in-secs 60 --transform-trade-data-db-name aggtrade_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 86400 --transform-trade-data-interval-in-secs 1800 --transform-trade-data-db-name aggtrade_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 14400 --transform-trade-data-interval-in-secs 900 --transform-trade-data-db-name aggtrade_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 3600 --transform-trade-data-interval-in-secs 300 --transform-trade-data-db-name aggtrade_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 1800 --transform-trade-data-interval-in-secs 120 --transform-trade-data-db-name aggtrade_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 900 --transform-trade-data-interval-in-secs 60 --transform-trade-data-db-name aggtrade_data
 
-python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 1800 --transform-trade-data-interval-in-secs 60 --transform-trade-data-db-name sp500_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 86400 --transform-trade-data-interval-in-secs 1800 --transform-trade-data-db-name sp500_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 14400 --transform-trade-data-interval-in-secs 900 --transform-trade-data-db-name sp500_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 3600 --transform-trade-data-interval-in-secs 300 --transform-trade-data-db-name sp500_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 1800 --transform-trade-data-interval-in-secs 120 --transform-trade-data-db-name sp500_data
+python3 ./main.py transform-trade-data --transform-trade-data-timeframe-in-secs 900 --transform-trade-data-interval-in-secs 60 --transform-trade-data-db-name sp500_data
 
 TODO: explain timeframe and data interval.

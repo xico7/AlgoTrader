@@ -7,8 +7,8 @@ def query_all_ranges(db_name, range_pct, price_counters_values, price_counters_s
     total_count = 0
     all_hits_count = 0
 
-    for symbol in connect_to_timeframe_db(db_name).list_collection_names():
-        for element in list(connect_to_timeframe_db(db_name).get_collection(symbol).find(
+    for col in connect_to_timeframe_db(db_name).list_collection_names():
+        for element in list(connect_to_timeframe_db(db_name).get_collection(col).find(
                 {BEGIN_TIMESTAMP: {MongoDB.HIGHER_EQ: 0}})):
 
             try:
@@ -26,10 +26,11 @@ def query_all_ranges(db_name, range_pct, price_counters_values, price_counters_s
     print("here")
 
 
-def show_range_percentage_plot(timeframe):
+def show_range_percentage_plot(db_name):
     values = []
-    for symbol in connect_to_timeframe_db(timeframe).list_collection_names():
-        for element in list(connect_to_timeframe_db(ONE_DAY_IN_SECS).get_collection(symbol).find(
+    db = connect_to_timeframe_db(db_name)
+    for col in db.list_collection_names():
+        for element in list(db.get_collection(col).find(
                 {BEGIN_TIMESTAMP: {MongoDB.HIGHER_EQ: 0}})):
             values.append(element['range_percentage'])
 
@@ -56,7 +57,9 @@ def show_range_percentage_plot(timeframe):
 #     print("total count", total_count)
 #     print("here")
 
+#show_range_percentage_plot("sp500_data_timeframe_14400_interval_900")
+query_all_ranges("sp500_data_timeframe_14400_interval_900", 9, ['10', '11'], 9)
+query_all_ranges("aggtrade_data_timeframe_14400_interval_900", 16, ['0', '1'], 9)
 
-query_all_ranges("aggtrade_data_timeframe_14400_interval_600", 16, ['0', '1'], 7)
 
 

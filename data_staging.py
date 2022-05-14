@@ -100,6 +100,14 @@ def get_last_second(timestamp):
     get_last_n_seconds(timestamp, 1)
 
 
+def sleep_until_time_match(fixed_timestamp):
+    if len(str(fixed_timestamp)) == 13:
+        time.sleep((fixed_timestamp - get_current_second_in_ms()) / 1000)
+    else:
+        time.sleep(fixed_timestamp - get_current_second())
+    return
+
+
 def get_last_n_seconds(timestamp, number_of_seconds):
     if len(str(timestamp)) == 13:
         while timestamp % int((str(number_of_seconds) + SECONDS_TO_MS_APPEND)) != 0:
@@ -122,7 +130,7 @@ def get_timeframe():
     if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({EVENT_TS: {MongoDB.HIGHER_EQ: 0}})):
         return sp500_elements[-1][EVENT_TS]
 
-    return get_last_n_seconds(get_current_second_in_ms(), 60)
+    return get_last_n_seconds(get_current_second_in_ms(), ONE_MIN_IN_SECS)
 
 
 def fill_symbol_prices(symbol_prices, end_ts):
@@ -134,7 +142,7 @@ def fill_symbol_prices(symbol_prices, end_ts):
         if not list_trades:
             LOG.error("No trades present in aggtrade, make sure trade aggregator is running.")
             raise
-        symbol_prices[symbol] = float(list_trades[1][PRICE])
+        symbol_prices[symbol] = float(list_trades[0][PRICE])
 
     return
 
@@ -221,3 +229,4 @@ def print_alive_if_passed_timestamp(timestamp):
     if get_current_second() > timestamp:
         print(datetime.fromtimestamp(get_current_second()))
         return True
+

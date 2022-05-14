@@ -9,7 +9,7 @@ END_TS = "end_timestamp"
 
 def transform_trade_data(args):
     from MongoDB.db_actions import insert_many_to_db, connect_to_db
-    from data_staging import get_current_second_in_ms, get_counter, query_db_last_minute, MongoDB, sec_to_ms, debug_prints
+    from data_staging import get_current_second_in_ms, get_counter, query_db_last_minute, MongoDB, sec_to_ms, debug_prints, sleep_until_time_match
 
     db_type = args['transform_trade_data_db_name']
     timeframe, time_interval = args["transform_trade_data_timeframe_in_secs"], args['transform_trade_data_interval_in_secs']
@@ -20,6 +20,11 @@ def transform_trade_data(args):
     price_volume_chart = {}
 
     while True:
+        starting_execution_ts += int(str(int(time_interval)) + "000")
+        if get_current_second_in_ms() < starting_execution_ts:
+            sleep_until_time_match(starting_execution_ts)
+            time.sleep(30)  # There is a delay for the dependent DBs to have the latest data.
+
         for collection in connect_to_db(db_type).list_collection_names():
             symbol_price = []
             total_volume = 0
@@ -35,11 +40,14 @@ def transform_trade_data(args):
                 symbol_price.append(float(elem[PRICE]))
                 total_volume += float(elem[QUANTITY])
 
+            if total_volume == 0:
+                continue
+
             max_value = max(symbol_price)
             min_value = min(symbol_price)
             price_range = (max_value - min_value) / 10
 
-            most_recent_price = float(list_trades[1][PRICE])
+            most_recent_price = float(list_trades[0][PRICE])
             price_volume_chart[collection] = {"last_price_counter": get_counter(min_value, price_range, most_recent_price)}
             price_volume_chart[collection]["last_price"] = most_recent_price
             price_volume_chart[collection][END_TS] = starting_execution_ts
@@ -51,6 +59,7 @@ def transform_trade_data(args):
 
             for elem in list_trades:
                 elem_counter = get_counter(min_value, price_range, float(elem[PRICE]))
+
                 elem_volume_pct = (float(elem[QUANTITY]) / total_volume) * 100
 
                 try:
@@ -62,9 +71,5 @@ def transform_trade_data(args):
         insert_many_to_db(db_name, price_volume_chart)
 
         debug_prints(starting_execution_ts)
-        starting_execution_ts += int(str(int(time_interval)) + "000")
 
-        while starting_execution_ts > get_current_second_in_ms():
-            time.sleep(1)
 
-        time.sleep(30)

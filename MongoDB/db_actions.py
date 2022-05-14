@@ -74,3 +74,11 @@ def create_db_time_index(db_feed, timestamp_var='E'):
 # def connect_to_algo_alpha_db():
 #     return MongoClient('mongodb://localhost:27017/algo_alpha').get_default_database()
 
+def delete_all_timeframes_dbs():
+    mongo_client = MongoClient(f'mongodb://localhost:27017/')
+    for db in mongo_client.list_database_names():
+        if "timeframe" in db:
+            mongo_client.drop_database(db)
+
+
+#delete_all_timeframes_dbs()
