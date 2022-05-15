@@ -3,6 +3,8 @@ from pymongo.errors import ServerSelectionTimeoutError
 from binance import AsyncClient, BinanceSocketManager
 import logging
 
+from tasks.transform_trade_data import QUANTITY, PRICE, EVENT_TS
+
 
 class QueueOverflow(Exception):
     pass
@@ -12,10 +14,7 @@ coingecko_marketcap_api_link = "https://api.coingecko.com/api/v3/coins/" \
                                "markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false"
 AGGTRADE_PYCACHE = 1000
 AGGREGATED_TRADE_WS = "@aggTrade"
-PRICE_P = 'p'
-QUANTITY = 'q'
 SYMBOL = 's'
-EVENT_TIMESTAMP = 'E'
 
 
 class AggtradeData(dict):
@@ -57,7 +56,7 @@ async def execute_ws_trades():
 
                 pycache_counter += 1
 
-                cache.aggtrade_data.append_to_list_update(aggtrade_symbol_pair, get_data_from_keys(aggtrade_data, EVENT_TIMESTAMP, PRICE_P, QUANTITY))
+                cache.aggtrade_data.append_to_list_update(aggtrade_symbol_pair, get_data_from_keys(aggtrade_data, EVENT_TS, PRICE, QUANTITY))
 
                 if pycache_counter > AGGTRADE_PYCACHE:
                     await async_insert_many_to_aggtrade_db(cache.aggtrade_data)

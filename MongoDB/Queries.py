@@ -1,5 +1,5 @@
 from data_staging import ONE_DAY_IN_SECS, BEGIN_TIMESTAMP, MongoDB
-from MongoDB.db_actions import connect_to_timeframe_db
+from MongoDB.db_actions import connect_to_db
 import matplotlib.pyplot as plt
 
 
@@ -7,8 +7,8 @@ def query_all_ranges(db_name, range_pct, price_counters_values, price_counters_s
     total_count = 0
     all_hits_count = 0
 
-    for col in connect_to_timeframe_db(db_name).list_collection_names():
-        for element in list(connect_to_timeframe_db(db_name).get_collection(col).find(
+    for col in connect_to_db(db_name).list_collection_names():
+        for element in list(connect_to_db(db_name).get_collection(col).find(
                 {BEGIN_TIMESTAMP: {MongoDB.HIGHER_EQ: 0}})):
 
             try:
@@ -28,7 +28,7 @@ def query_all_ranges(db_name, range_pct, price_counters_values, price_counters_s
 
 def show_range_percentage_plot(db_name):
     values = []
-    db = connect_to_timeframe_db(db_name)
+    db = connect_to_db(db_name)
     for col in db.list_collection_names():
         for element in list(db.get_collection(col).find(
                 {BEGIN_TIMESTAMP: {MongoDB.HIGHER_EQ: 0}})):

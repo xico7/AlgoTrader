@@ -9,7 +9,7 @@ END_TS = "end_timestamp"
 
 def transform_trade_data(args):
     from MongoDB.db_actions import insert_many_to_db, connect_to_db
-    from data_staging import get_current_second_in_ms, get_counter, query_db_last_minute, MongoDB, sec_to_ms, debug_prints, sleep_until_time_match
+    from data_staging import get_counter, query_db_last_minute, MongoDB, sec_to_ms, debug_prints, sleep_until_time_match
 
     db_type = args['transform_trade_data_db_name']
     timeframe, time_interval = args["transform_trade_data_timeframe_in_secs"], args['transform_trade_data_interval_in_secs']
@@ -21,22 +21,24 @@ def transform_trade_data(args):
 
     while True:
         starting_execution_ts += int(str(int(time_interval)) + "000")
-        if get_current_second_in_ms() < starting_execution_ts:
-            sleep_until_time_match(starting_execution_ts)
-            time.sleep(30)  # There is a delay for the dependent DBs to have the latest data.
+        # if get_current_second_in_ms() < starting_execution_ts:
+        #     sleep_until_time_match(starting_execution_ts)
+        #     time.sleep(30)  # There is a delay for the dependent DBs to have the latest data.
 
         for collection in connect_to_db(db_type).list_collection_names():
             symbol_price = []
             total_volume = 0
 
-            list_trades = list(connect_to_db(db_type).get_collection(collection).find(
+            time1 = time.time()
+            list_trades = list(connect_to_db(db_type).get_collection("BTCUSDT").find(
                     {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: starting_execution_ts - timeframe_in_ms}},
                                    {EVENT_TS: {MongoDB.LOWER_EQ: starting_execution_ts}}]}))
-
+            timeit = time.time() - time1
             if not list_trades:
                 continue
 
             for elem in list_trades:
+
                 symbol_price.append(float(elem[PRICE]))
                 total_volume += float(elem[QUANTITY])
 

@@ -3,20 +3,23 @@ from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient as AsyncMotorClient
 from pymongo.errors import OperationFailure
 
+from data_staging import BEGIN_TIMESTAMP
+from tasks.transform_trade_data import PRICE, QUANTITY, EVENT_TS
+
 sp500_db_collection = "sp500_volume_highlow_chart"
 fund_trades_database_name = "sp500_data"
-usdt_trades_database_name = "aggtrade_data"
+ws_usdt_trades_database_name = "aggtrade_data"
 
 def async_connect_to_aggtrade_data_db():
-    return AsyncMotorClient(f'mongodb://localhost:27017/{usdt_trades_database_name}').get_default_database()
+    return AsyncMotorClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()
 
 
 def connect_to_aggtrade_data_db():
-    return MongoClient(f'mongodb://localhost:27017/{usdt_trades_database_name}').get_default_database()
+    return MongoClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()
 
 
-def connect_to_timeframe_db(db_name):
-    return MongoClient(f'mongodb://localhost:27017/{db_name}').get_default_database()
+def connect_to_ten_secs_parsed_trades_db():
+    return connect_to_db("ten_secs_parsed_trades")
 
 
 def connect_to_db(db_name):
@@ -37,6 +40,24 @@ async def async_insert_many_to_aggtrade_db(data: dict):
 
 def insert_one_to_sp500_db(data: dict):
     insert_one(connect_to_sp500_db(), sp500_db_collection, data)
+
+
+def insert_many_to_ten_secs_parsed_trades(ts_begin, prices, quantities):
+    insert_db_trades("ten_secs_parsed_trades", ts_begin, prices, quantities)
+
+
+def insert_ten_secs_fund_db(data):
+    insert_one(connect_to_db("ten_secs_fund_trades"), "fund_data", data)
+
+
+def insert_db_trades(db_name, ts_begin, prices, quantities):
+    for key in list(prices.keys()):
+        try:
+            connect_to_db(db_name).get_collection(key).insert_one(
+                {EVENT_TS: ts_begin, PRICE: prices[key], QUANTITY: quantities[key]})
+        except pymongo.errors.DuplicateKeyError:
+            # skip document because it already exists in new collection
+            continue
 
 
 def insert_many_to_db(db_name, data):

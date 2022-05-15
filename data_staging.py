@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pymongo
 from pymongo.errors import OperationFailure
 
 import MongoDB.db_actions as mongo
@@ -71,8 +72,8 @@ def remove_usdt(symbols: Union[List[str], str]):
 def query_db_last_minute(db_name):
     try:
         from tasks.transform_trade_data import END_TS
-        return ONE_MIN_IN_MS + list(mongo.connect_to_timeframe_db(db_name).get_collection(
-            mongo.connect_to_timeframe_db(db_name).list_collection_names()[0]).find(
+        return ONE_MIN_IN_MS + list(mongo.connect_to_db(db_name).get_collection(
+            mongo.connect_to_db(db_name).list_collection_names()[0]).find(
             {END_TS: {MongoDB.HIGHER_EQ: 0}}))[-1][END_TS]
     except IndexError as e:
         return get_last_minute(get_current_second_in_ms())
@@ -93,11 +94,11 @@ def sec_to_ms(time_value):
 
 
 def get_last_minute(timestamp):
-    return get_last_n_seconds(timestamp, 60)
+    return round_to_last_n_secs(timestamp, 60)
 
 
 def get_last_second(timestamp):
-    get_last_n_seconds(timestamp, 1)
+    round_to_last_n_secs(timestamp, 1)
 
 
 def sleep_until_time_match(fixed_timestamp):
@@ -108,13 +109,13 @@ def sleep_until_time_match(fixed_timestamp):
     return
 
 
-def get_last_n_seconds(timestamp, number_of_seconds):
+def round_to_last_n_secs(timestamp, number_of_seconds):
     if len(str(timestamp)) == 13:
         while timestamp % int((str(number_of_seconds) + SECONDS_TO_MS_APPEND)) != 0:
-            timestamp -= 1000
-        return timestamp
+            timestamp -= 1
     while timestamp % number_of_seconds != 0:
         timestamp -= 1
+
     return timestamp
 
 
@@ -130,7 +131,7 @@ def get_timeframe():
     if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({EVENT_TS: {MongoDB.HIGHER_EQ: 0}})):
         return sp500_elements[-1][EVENT_TS]
 
-    return get_last_n_seconds(get_current_second_in_ms(), ONE_MIN_IN_SECS)
+    return round_to_last_n_secs(get_current_second_in_ms(), ONE_MIN_IN_SECS)
 
 
 def fill_symbol_prices(symbol_prices, end_ts):
@@ -230,3 +231,12 @@ def print_alive_if_passed_timestamp(timestamp):
         print(datetime.fromtimestamp(get_current_second()))
         return True
 
+
+def get_last_ts_from_db(database_conn, collection):
+    try:
+        return list(database_conn.get_collection(collection).find(
+            {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: 0}},
+                           {EVENT_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
+            EVENT_TS, pymongo.DESCENDING).limit(1))[0][EVENT_TS]
+    except IndexError:
+        return None
