@@ -37,10 +37,6 @@ def algo_argparse():
     subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO",
                                                          choices=[fund_trades_database_name, ws_usdt_trades_database_name])
 
-    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-timeframe-in-secs", required=True, type=int,
-                                                         help="TODO")
-    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-interval-in-secs", required=True, type=int,
-                                                         help="chart calculate each 'time interval")
     return parent_parser.parse_args()
 
 

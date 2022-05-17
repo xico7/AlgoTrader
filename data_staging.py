@@ -39,10 +39,12 @@ ONE_HOUR_IN_SECS = ONE_MIN_IN_SECS * 60
 FOUR_HOUR_IN_SECS = ONE_HOUR_IN_SECS * 4
 ONE_DAY_IN_SECS = ONE_HOUR_IN_SECS * 24
 
-ONE_HOUR_IN_MS = int(str(ONE_HOUR_IN_SECS) + SECONDS_TO_MS_APPEND)
+ONE_DAY_IN_MS = ONE_DAY_IN_SECS * 1000
+ONE_HOUR_IN_MS = ONE_HOUR_IN_SECS * 1000
 FIFTEEN_MIN_IN_MS = int(str(FIFTEEN_MIN_IN_SECS) + SECONDS_TO_MS_APPEND)
 ONE_MIN_IN_MS = int(str(ONE_MIN_IN_SECS) + SECONDS_TO_MS_APPEND)
 TEN_SECONDS_IN_MS = int(str(TEN_SECONDS) + SECONDS_TO_MS_APPEND)
+FIVE_SECS_IN_MS = 5000
 
 ###################
 
@@ -237,6 +239,6 @@ def get_last_ts_from_db(database_conn, collection):
         return list(database_conn.get_collection(collection).find(
             {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: 0}},
                            {EVENT_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
-            EVENT_TS, pymongo.DESCENDING).limit(1))[0][EVENT_TS]
+            EVENT_TS, pymongo.ASCENDING).limit(1))[-1][EVENT_TS]
     except IndexError:
         return None

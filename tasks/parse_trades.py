@@ -26,7 +26,7 @@ def parse_trades_ten_seconds():
         for symbol in connect_to_aggtrade_data_db().list_collection_names():
             if not (oldest_ts := (get_last_ts_from_db(connect_to_ten_secs_parsed_trades_db(), symbol) + TEN_SECONDS_IN_MS)):
                 oldest_ts = get_last_ts_from_db(connect_to_aggtrade_data_db(), symbol)
-
+            # TODO: Dividir o oldest ts
             ts_begin = round_to_last_n_secs(oldest_ts, 10)
 
             list_trades = list(connect_to_aggtrade_data_db().get_collection(symbol).find(

@@ -2,13 +2,11 @@ import pymongo
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient as AsyncMotorClient
 from pymongo.errors import OperationFailure
-
-from data_staging import BEGIN_TIMESTAMP
 from tasks.transform_trade_data import PRICE, QUANTITY, EVENT_TS
 
 sp500_db_collection = "sp500_volume_highlow_chart"
-fund_trades_database_name = "sp500_data"
-ws_usdt_trades_database_name = "aggtrade_data"
+fund_trades_database_name = "ten_secs_fund_trades"
+ws_usdt_trades_database_name = "ten_secs_parsed_trades"
 
 def async_connect_to_aggtrade_data_db():
     return AsyncMotorClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()
@@ -102,4 +100,10 @@ def delete_all_timeframes_dbs():
             mongo_client.drop_database(db)
 
 
+def create_index_db_cols(db_name, field):
+    for col in connect_to_db(db_name).list_collection_names():
+        connect_to_db(db_name).get_collection(col).create_index([(field, -1)])
+
+
+#create_index_db_cols("ten_secs_parsed_trades", EVENT_TS)
 #delete_all_timeframes_dbs()
