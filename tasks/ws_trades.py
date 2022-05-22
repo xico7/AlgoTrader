@@ -39,7 +39,7 @@ class DatabaseCache:
 
 
 async def execute_ws_trades():
-    from data_staging import get_current_second, print_alive_if_passed_timestamp, get_data_from_keys, usdt_with_bnb_symbols_stream
+    from data_staging import get_current_second, print_alive_if_passed_timestamp, transform_data, usdt_with_bnb_symbols_stream
     from MongoDB.db_actions import async_insert_many_to_aggtrade_db
     cache = DatabaseCache()
     pycache_counter = 0
@@ -56,7 +56,7 @@ async def execute_ws_trades():
 
                 pycache_counter += 1
 
-                cache.aggtrade_data.append_to_list_update(aggtrade_symbol_pair, get_data_from_keys(aggtrade_data, EVENT_TS, PRICE, QUANTITY))
+                cache.aggtrade_data.append_to_list_update(aggtrade_symbol_pair, transform_data(aggtrade_data, EVENT_TS, [PRICE, float], [QUANTITY, float]))
 
                 if pycache_counter > AGGTRADE_PYCACHE:
                     await async_insert_many_to_aggtrade_db(cache.aggtrade_data)

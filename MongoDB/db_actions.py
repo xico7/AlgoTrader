@@ -6,7 +6,7 @@ from tasks.transform_trade_data import PRICE, QUANTITY, EVENT_TS
 
 sp500_db_collection = "sp500_volume_highlow_chart"
 fund_trades_database_name = "ten_secs_fund_trades"
-ws_usdt_trades_database_name = "ten_secs_parsed_trades"
+ws_usdt_trades_database_name = "aggtrade_data"
 
 def async_connect_to_aggtrade_data_db():
     return AsyncMotorClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()

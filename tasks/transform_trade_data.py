@@ -7,9 +7,9 @@ END_TS = "end_timestamp"
 
 
 def transform_trade_data(args):
-    from MongoDB.db_actions import insert_many_to_db, connect_to_db, connect_to_ten_secs_parsed_trades_db
-    from data_staging import get_counter, get_last_ts_from_db, query_db_last_minute, MongoDB, TEN_SECONDS_IN_MS, \
-        sec_to_ms, debug_prints, sleep_until_time_match, ONE_DAY_IN_MS, FIVE_SECS_IN_MS
+    from MongoDB.db_actions import insert_many_to_db, connect_to_db
+    from data_staging import get_counter, get_last_ts_from_db, MongoDB, TEN_SECONDS_IN_MS, \
+        debug_prints, ONE_DAY_IN_MS, FIVE_SECS_IN_MS
 
     db_type = args['transform_trade_data_db_name']
     #timeframe, time_interval = args["transform_trade_data_timeframe_in_secs"], args['transform_trade_data_interval_in_secs']
@@ -33,6 +33,17 @@ def transform_trade_data(args):
         symbols_one_day_trades[collection] = list(connect_to_db(db_type).get_collection(collection).find(
                 {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: first_element_timestamp[collection]}},
                                {EVENT_TS: {MongoDB.LOWER_EQ: last_ts[collection]}}]}))
+
+        tmp_list = []
+        for elem in symbols_one_day_trades[collection]:
+            tmp_list.append(elem[EVENT_TS])
+        first_elem = tmp_list[0] + 10000
+        tmp_elem = 0
+        for list_elem in tmp_list:
+            if first_elem - list_elem != 10000:
+                print("here")
+            first_elem = list_elem
+
 
     while True:
         time1 = time.time()

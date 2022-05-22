@@ -6,7 +6,7 @@ from pymongo.errors import OperationFailure
 import MongoDB.db_actions as mongo
 import re
 import time
-from typing import Union, List
+from typing import Union, List, Optional
 import requests as requests
 
 from argparse_func import LOG
@@ -69,18 +69,6 @@ def remove_usdt(symbols: Union[List[str], str]):
             return None
     else:
         return [re.match('(^(.+?)USDT)', symbol).groups()[1].upper() for symbol in symbols]
-
-
-def query_db_last_minute(db_name):
-    try:
-        from tasks.transform_trade_data import END_TS
-        return ONE_MIN_IN_MS + list(mongo.connect_to_db(db_name).get_collection(
-            mongo.connect_to_db(db_name).list_collection_names()[0]).find(
-            {END_TS: {MongoDB.HIGHER_EQ: 0}}))[-1][END_TS]
-    except IndexError as e:
-        return get_last_minute(get_current_second_in_ms())
-    except OperationFailure as e:
-        return get_last_minute(get_current_second_in_ms())
 
 
 def get_current_second() -> int:
@@ -171,10 +159,14 @@ def debug_prints(start_time):
     print("exec time in milliseconds", get_current_second_in_ms() - start_time)
 
 
-def get_data_from_keys(data, *keys):
+def transform_data(data, *keys):
     data_keys = {}
     for key in keys:
-        data_keys.update({key: data[key]})
+        if isinstance(key, list):
+            type_cast = key[1]
+            data_keys.update({key[0]: type_cast(data[key[0]])})
+        else:
+            data_keys.update({key: data[key]})
     return data_keys
 
 
@@ -242,3 +234,10 @@ def get_last_ts_from_db(database_conn, collection):
             EVENT_TS, pymongo.ASCENDING).limit(1))[-1][EVENT_TS]
     except IndexError:
         return None
+
+
+def add_n_secs(timestamp: Optional[float], seconds: int) -> Optional[int]:
+    if timestamp:
+        timestamp += sec_to_ms(seconds)
+
+    return timestamp
