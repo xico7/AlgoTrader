@@ -2,6 +2,8 @@ import pymongo
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient as AsyncMotorClient
 from pymongo.errors import OperationFailure
+
+from data_staging import sec_to_ms
 from tasks.transform_trade_data import PRICE, QUANTITY, EVENT_TS
 
 sp500_db_collection = "sp500_volume_highlow_chart"
@@ -16,8 +18,8 @@ def connect_to_aggtrade_data_db():
     return MongoClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()
 
 
-def connect_to_ten_secs_parsed_trades_db():
-    return connect_to_db("ten_secs_parsed_trades")
+def connect_to_n_ms_parsed_trades_db(ms_to_parse):
+    return connect_to_db(f"{ms_to_parse}_ms_parsed_trades")
 
 
 def connect_to_db(db_name):
@@ -40,22 +42,23 @@ def insert_one_to_sp500_db(data: dict):
     insert_one(connect_to_sp500_db(), sp500_db_collection, data)
 
 
-def insert_many_to_ten_secs_parsed_trades(ts_begin, prices, quantities):
-    insert_db_trades("ten_secs_parsed_trades", ts_begin, prices, quantities)
+def insert_n_secs_parsed_trades_db(ts_begin, symbols_price_data, symbols_volume_data, ms_to_parse):
+    insert_range_db_trades(f"{ms_to_parse}_ms_parsed_trades", ts_begin, symbols_price_data, symbols_volume_data, ms_to_parse)
 
 
-def insert_ten_secs_fund_db(data):
-    insert_one(connect_to_db("ten_secs_fund_trades"), "fund_data", data)
+def insert_n_secs_fund_db(ts_begin, fund_price_data, fund_volume_data, seconds_to_parse):
+    insert_range_db_trades(f"{seconds_to_parse}_ms_fund_data_trades", ts_begin, fund_price_data, fund_volume_data, seconds_to_parse)
 
 
-def insert_db_trades(db_name, ts_begin, prices, quantities):
-    for key in list(prices.keys()):
-        try:
-            connect_to_db(db_name).get_collection(key).insert_one(
-                {EVENT_TS: ts_begin, PRICE: prices[key], QUANTITY: quantities[key]})
-        except pymongo.errors.DuplicateKeyError:
-            # skip document because it already exists in new collection
-            continue
+def insert_range_db_trades(db_name, ts_begin, symbols_values, symbols_volumes, ms_to_parse):
+    for timeframe_symbols_values in symbols_values:
+        for symbol in symbols_values[timeframe_symbols_values].keys():
+            try:
+                connect_to_db(db_name).get_collection(symbol).insert_one(
+                    {EVENT_TS: ts_begin + (ms_to_parse * timeframe_symbols_values), PRICE: symbols_values[timeframe_symbols_values][symbol], QUANTITY: symbols_volumes[timeframe_symbols_values][symbol]})
+            except pymongo.errors.DuplicateKeyError:
+                # skip document because it already exists in new collection
+                continue
 
 
 def insert_many_to_db(db_name, data):

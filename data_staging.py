@@ -75,12 +75,22 @@ def get_current_second() -> int:
     return int(time.time())
 
 
-def get_current_second_in_ms() -> int:
+def get_current_second_in_ms() -> float:
     return sec_to_ms(get_current_second())
 
 
 def sec_to_ms(time_value):
-    return int(str(time_value) + SECONDS_TO_MS_APPEND)
+    time_value_str = str(time_value)
+    if '.' not in str(time_value):
+        return float(time_value_str + SECONDS_TO_MS_APPEND)
+    else:
+        split_decimal_tv = time_value_str.split('.')
+        return float(split_decimal_tv[0] + SECONDS_TO_MS_APPEND + '.' + split_decimal_tv[1])
+
+
+def ms_to_secs(time_value):
+    return time_value / 1000
+
 
 
 def get_last_minute(timestamp):
@@ -236,8 +246,21 @@ def get_last_ts_from_db(database_conn, collection):
         return None
 
 
-def add_n_secs(timestamp: Optional[float], seconds: int) -> Optional[int]:
+def optional_add_secs_in_ms(timestamp: Optional[float], seconds: int) -> Optional[int]:
     if timestamp:
         timestamp += sec_to_ms(seconds)
 
     return timestamp
+
+
+def trades_in_range(trades, begin_ts, ms_to_parse, iteration):
+    leftover_trades, partial_trades_list = [], []
+    for i, trade in enumerate(trades):
+        if begin_ts + (iteration * ms_to_parse) > list(trade.items())[1][1] > \
+                begin_ts + ((iteration-1) * ms_to_parse):
+            partial_trades_list.append(trade)
+        else:
+            leftover_trades.append(trade)
+
+    return leftover_trades, partial_trades_list
+

@@ -49,14 +49,12 @@ async def execute_ws_trades():
             await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_stream(AGGREGATED_TRADE_WS)) as tscm:
         while True:
             try:
-
                 ws_trade = await tscm.recv()
                 aggtrade_data = ws_trade['data']
-                aggtrade_symbol_pair = aggtrade_data[SYMBOL]
-
                 pycache_counter += 1
 
-                cache.aggtrade_data.append_to_list_update(aggtrade_symbol_pair, transform_data(aggtrade_data, EVENT_TS, [PRICE, float], [QUANTITY, float]))
+                cache.aggtrade_data.append_to_list_update(aggtrade_data[SYMBOL], transform_data(
+                    aggtrade_data, EVENT_TS, [PRICE, float], [QUANTITY, float]))
 
                 if pycache_counter > AGGTRADE_PYCACHE:
                     await async_insert_many_to_aggtrade_db(cache.aggtrade_data)
