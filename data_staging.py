@@ -109,9 +109,9 @@ def sleep_until_time_match(fixed_timestamp):
     return
 
 
-def round_to_last_n_secs(timestamp, number_of_seconds):
+def round_to_last_n_secs(timestamp, number_of_seconds: int):
     if len(str(timestamp)) == 13:
-        while timestamp % int((str(number_of_seconds) + SECONDS_TO_MS_APPEND)) != 0:
+        while timestamp % (number_of_seconds * 1000) != 0:
             timestamp -= 1
     while timestamp % number_of_seconds != 0:
         timestamp -= 1
@@ -236,28 +236,27 @@ def print_alive_if_passed_timestamp(timestamp):
         return True
 
 
-def get_last_ts_from_db(database_conn, collection):
+def get_last_ts_from_db(database_conn, collection, filter=pymongo.ASCENDING):
     try:
         return list(database_conn.get_collection(collection).find(
             {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: 0}},
                            {EVENT_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
-            EVENT_TS, pymongo.ASCENDING).limit(1))[-1][EVENT_TS]
+            EVENT_TS, filter).limit(1))[-1][EVENT_TS]
     except IndexError:
         return None
 
 
-def optional_add_secs_in_ms(timestamp: Optional[float], seconds: int) -> Optional[int]:
+def optional_add_secs_in_ms(timestamp: Optional[float], milliseconds: int) -> Optional[int]:
     if timestamp:
-        timestamp += sec_to_ms(seconds)
+        timestamp += milliseconds
 
     return timestamp
 
 
-def trades_in_range(trades, begin_ts, ms_to_parse, iteration):
+def trades_in_range(trades, begin_ts, iteration):
     leftover_trades, partial_trades_list = [], []
     for i, trade in enumerate(trades):
-        if begin_ts + (iteration * ms_to_parse) > list(trade.items())[1][1] > \
-                begin_ts + ((iteration-1) * ms_to_parse):
+        if begin_ts + iteration > list(trade.items())[1][1]:
             partial_trades_list.append(trade)
         else:
             leftover_trades.append(trade)
