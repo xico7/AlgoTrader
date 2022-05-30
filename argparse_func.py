@@ -3,10 +3,8 @@ import inspect
 from inspect import getmembers, isfunction
 import pkgutil
 import logging
-
-from pymongo import MongoClient
-
 import logs
+from MongoDB.db_actions import list_database_names
 
 PROGRAM_NAME = 'Algotrading-Crypto'
 fund_data = 'fund-data'
@@ -30,12 +28,8 @@ def algo_argparse():
 
     for element in pkgutil.iter_modules(tasks.__path__):
         subparser.add_parser(element.name.replace("_", "-"))
-        pass
 
-    # TODO: Improve choices, find all collections in MongoDB and those are the choices.
-    from MongoDB.db_actions import fund_trades_database_name, ws_usdt_trades_database_name
-    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO",
-                                                         choices=[fund_trades_database_name, ws_usdt_trades_database_name])
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO", choices=list_database_names())
 
     return parent_parser.parse_args()
 

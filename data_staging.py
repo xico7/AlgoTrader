@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pymongo
-from pymongo.errors import OperationFailure
 
 import MongoDB.db_actions as mongo
 import re
@@ -10,7 +9,11 @@ from typing import Union, List, Optional
 import requests as requests
 
 from argparse_func import LOG
-from tasks.transform_trade_data import EVENT_TS, PRICE, QUANTITY
+from tasks.transform_trade_data import EVENT_TS, PRICE
+
+
+class UntradedSymbol(Exception): pass
+
 
 SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'LUNAUSDT',
                             'DOGEUSDT',
@@ -236,12 +239,16 @@ def print_alive_if_passed_timestamp(timestamp):
         return True
 
 
-def get_last_ts_from_db(database_conn, collection, filter=pymongo.ASCENDING):
+def get_first_ts_from_db(database_conn, collection, ts_filter=pymongo.ASCENDING, timestamp_arg=EVENT_TS):
+    return get_last_ts_from_db(database_conn, collection, ts_filter=ts_filter, timestamp_arg=timestamp_arg)
+
+
+def get_last_ts_from_db(database_conn, collection, ts_filter=pymongo.DESCENDING, timestamp_arg=EVENT_TS):
     try:
         return list(database_conn.get_collection(collection).find(
-            {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: 0}},
-                           {EVENT_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
-            EVENT_TS, filter).limit(1))[-1][EVENT_TS]
+            {MongoDB.AND: [{timestamp_arg: {MongoDB.HIGHER_EQ: 0}},
+                           {timestamp_arg: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
+            timestamp_arg, ts_filter).limit(1))[-1][timestamp_arg]
     except IndexError:
         return None
 
@@ -263,3 +270,10 @@ def trades_in_range(trades, begin_ts, iteration):
 
     return leftover_trades, partial_trades_list
 
+
+def get_most_recent_price(symbol_price_data):
+    for elem in symbol_price_data:
+        if elem[PRICE] != 0:
+            return elem[PRICE]
+
+    raise UntradedSymbol("The symbol price data contains no valid price value.")

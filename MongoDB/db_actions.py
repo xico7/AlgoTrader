@@ -9,6 +9,11 @@ fund_trades_database_name = "ten_secs_fund_trades"
 ws_usdt_trades_database_name = "aggtrade_data"
 parsed_trades_all_symbols_db_name = "{}_seconds_parsed_trades"
 parsed_trades_fund_db_name = "{}_seconds_fund_data_trades"
+symbol_price_chart_db_name = 'symbols_price_volume_chart'
+
+
+def list_database_names():
+    return list(MongoClient("mongodb://localhost:27017/").list_database_names())
 
 
 def async_connect_to_aggtrade_data_db():
@@ -80,12 +85,13 @@ def insert_many_from_dict_async_one(database, data):
         database.get_collection(key).insert_many(data[key])
 
 
-def create_db_time_index(db_feed, timestamp_var='E'):
-    for col_name in db_feed.list_collection_names():
+def create_db_time_index(db_name, timestamp_var='E'):
+    db_conn = connect_to_db(db_name)
+    for col_name in db_conn.list_collection_names():
         try:
             # db_feed.get_collection(col_name).create_index([(timestamp_var, pymongo.DESCENDING)], name='Time_index',
             #                                               unique=True)
-            db_feed.get_collection(col_name).create_index([(timestamp_var, pymongo.DESCENDING)], name='Time_index')
+            db_conn.get_collection(col_name).create_index([(timestamp_var, pymongo.DESCENDING)], name='Time_index')
         except OperationFailure as e:
             continue
 
@@ -104,6 +110,9 @@ def create_index_db_cols(db_name, field):
     for col in connect_to_db(db_name).list_collection_names():
         connect_to_db(db_name).get_collection(col).create_index([(field, -1)])
 
+
+# create_db_time_index("10_seconds_fund_data_trades")
+# create_db_time_index("10_seconds_parsed_trades")
 
 #create_index_db_cols("ten_secs_parsed_trades", EVENT_TS)
 #delete_all_timeframes_dbs()
