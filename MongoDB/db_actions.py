@@ -9,7 +9,7 @@ fund_trades_database_name = "ten_secs_fund_trades"
 ws_usdt_trades_database_name = "aggtrade_data"
 parsed_trades_all_symbols_db_name = "{}_seconds_parsed_trades"
 parsed_trades_fund_db_name = "{}_seconds_fund_data_trades"
-symbol_price_chart_db_name = 'symbols_price_volume_chart'
+symbol_price_chart_db_name = 'symbols_price_volume_chart_{}'
 
 
 def list_database_names():
@@ -64,12 +64,16 @@ def insert_range_db_trades(db_name, ts_begin, symbols_values, symbols_volumes):
 
 
 def insert_many_to_db(db_name, data):
-    for key in list(data.keys()):
-        try:
-            connect_to_db(db_name).get_collection(key).insert_one(data[key])
-        except pymongo.errors.DuplicateKeyError:
-            # skip document because it already exists in new collection
-            continue
+    for elem in data:
+        for key in list(elem.keys()):
+
+    for timeframe in data:
+        for key in list(timeframe.keys()):
+            try:
+                connect_to_db(db_name).get_collection(key).insert_one(timeframe[key])
+            except pymongo.errors.DuplicateKeyError:
+                # skip document because it already exists in new collection
+                continue
 
 
 def insert_one_from_dict(database, symbol, data):
@@ -83,6 +87,10 @@ def insert_one(database, collection, data):
 def insert_many_from_dict_async_one(database, data):
     for key in list(data.keys()):
         database.get_collection(key).insert_many(data[key])
+
+
+def connect_price_chart_db(timeframe):
+    return MongoClient(f'mongodb://localhost:27017/{symbol_price_chart_db_name.format(timeframe)}').get_default_database()
 
 
 def create_db_time_index(db_name, timestamp_var='E'):

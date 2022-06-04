@@ -30,7 +30,7 @@ def algo_argparse():
         subparser.add_parser(element.name.replace("_", "-"))
 
     subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO", choices=list_database_names())
-
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-chart-milliseconds", type=int, required=True, help="TODO")
     return parent_parser.parse_args()
 
 

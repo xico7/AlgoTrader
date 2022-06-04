@@ -1,7 +1,5 @@
 import time
 
-import pymongo
-
 DEFAULT_COL_SEARCH = "BTCUSDT"
 EVENT_TS = "E"
 PRICE = "p"
@@ -12,7 +10,9 @@ END_TS = "end_timestamp"
 #  collections have same size they should be, if they don't its probably not a big deal but harder to verify..
 
 # TODO: Done for all symbols, do the same for fund.
-
+# TODO: If the symbol disappears while this is running it will work wrongly,
+#  thankfully that is rare ocurrence, it happened with luna because i deleted it manually..
+# TODO: Get candles from binance to have a selfhealing ws-trades
 
 def transform_trade_data(args):
     from MongoDB.db_actions import insert_many_to_db, connect_to_db, symbol_price_chart_db_name
@@ -27,30 +27,33 @@ def transform_trade_data(args):
                                                                timestamp_arg='end_timestamp'), symbol_price_chart_timeframe)):
         first_element_timestamp = get_first_ts_from_db(connect_to_db(transform_db_name), DEFAULT_COL_SEARCH)
 
-    last_element_timestamp = first_element_timestamp + ONE_DAY_IN_MS + FIVE_SECS_IN_MS
+    last_element_timestamp = first_element_timestamp + args['transform_trade_data_chart_milliseconds'] + FIVE_SECS_IN_MS
 
     symbols_one_day_trades = {}
-
-    end_timestamp = get_last_ts_from_db(connect_to_db(transform_db_name), DEFAULT_COL_SEARCH)
-
     for col in db_cols:
-        symbols_one_day_trades[col] = list(connect_to_db(transform_db_name).get_collection(col).find(
-                {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: first_element_timestamp}},
-                               {EVENT_TS: {MongoDB.LOWER_EQ: last_element_timestamp}}]}))
+        timeframe_data = list(connect_to_db(transform_db_name).get_collection(col).find(
+            {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: first_element_timestamp}},
+                           {EVENT_TS: {MongoDB.LOWER_EQ: last_element_timestamp}}]}))
+        if len(timeframe_data) > (last_element_timestamp - first_element_timestamp) / 10000 - 1:
+            symbols_one_day_trades[col] = timeframe_data
 
     symbols_append_trades = {}
+
+    finish_ts = get_last_ts_from_db(connect_to_db(transform_db_name), DEFAULT_COL_SEARCH)
+    cache = 0
+    price_volume_chart = []
     while True:
-        if last_element_timestamp > end_timestamp:
+        if last_element_timestamp > finish_ts:
             print("success.")
             exit(0)
         time1 = time.time()
-        price_volume_chart = {}
         if not symbols_append_trades or not symbols_append_trades[DEFAULT_COL_SEARCH]:
             for symbol in db_cols:
                 symbols_append_trades[symbol] = list(connect_to_db(transform_db_name).get_collection(symbol).find(
                         {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: last_element_timestamp}},
-                                       {EVENT_TS: {MongoDB.LOWER_EQ: last_element_timestamp + symbol_price_chart_timeframe * 30}}]}))
+                                       {EVENT_TS: {MongoDB.LOWER_EQ: last_element_timestamp + symbol_price_chart_timeframe * 300}}]}))
 
+        price_volume_chart.append({})
         for symbol, symbol_values in symbols_one_day_trades.items():
             symbol_volume = 0
             symbol_prices = []
@@ -66,22 +69,27 @@ def transform_trade_data(args):
             min_value = min(symbol_prices)
             price_range = (max_value - min_value) / 10
             most_recent_price = get_most_recent_price(symbols_one_day_trades[symbol])
-            price_volume_chart[symbol] = {"last_price_counter": get_counter(min_value, price_range, most_recent_price)}
-            price_volume_chart[symbol]["last_price"] = most_recent_price
-            price_volume_chart[symbol][END_TS] = symbols_one_day_trades[symbol][0][EVENT_TS]
-            price_volume_chart[symbol]["begin_timestamp"] = symbols_one_day_trades[symbol][-1][EVENT_TS]
-            price_volume_chart[symbol]["range_percentage"] = (max_value - min_value) * 100 / max_value
-            price_volume_chart[symbol]["min"] = min_value
-            price_volume_chart[symbol]["max"] = max_value
-            price_volume_chart[symbol]["total_volume"] = symbol_volume
+            price_volume_chart[cache][symbol] = {"last_price_counter": get_counter(min_value, price_range, most_recent_price)}
+            price_volume_chart[cache][symbol]["last_price"] = most_recent_price
+            price_volume_chart[cache][symbol][END_TS] = symbols_one_day_trades[symbol][0][EVENT_TS]
+            price_volume_chart[cache][symbol]["begin_timestamp"] = symbols_one_day_trades[symbol][-1][EVENT_TS]
+            price_volume_chart[cache][symbol]["range_percentage"] = (max_value - min_value) * 100 / max_value
+            price_volume_chart[cache][symbol]["min"] = min_value
+            price_volume_chart[cache][symbol]["max"] = max_value
+            price_volume_chart[cache][symbol]["total_volume"] = symbol_volume
 
         last_element_timestamp += symbol_price_chart_timeframe
-        insert_many_to_db(symbol_price_chart_db_name, price_volume_chart)
+        cache += 1
+        if cache == 30:
+            insert_many_to_db(symbol_price_chart_db_name.format(args['transform_trade_data_chart_milliseconds']), price_volume_chart)
+            price_volume_chart = [{}]
+            cache = 0
 
         for symbol, symbol_values in symbols_one_day_trades.items():
             symbol_values.pop()
             symbol_values.insert(0, symbols_append_trades[symbol][-1])
             symbols_append_trades[symbol].pop()
+
 
         print(time.time() - time1)
 

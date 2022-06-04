@@ -1,4 +1,4 @@
-from data_staging import MongoDB, sec_to_ms
+from data_staging import MongoDB
 from MongoDB.db_actions import connect_to_aggtrade_data_db
 
 
