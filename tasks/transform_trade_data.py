@@ -1,10 +1,6 @@
 import time
 
-DEFAULT_COL_SEARCH = "BTCUSDT"
-EVENT_TS = "E"
-PRICE = "p"
-QUANTITY = 'q'
-END_TS = "end_timestamp"
+
 
 # TODO: Verify if data is being well inserted in parsed-trades, if all
 #  collections have same size they should be, if they don't its probably not a big deal but harder to verify..
@@ -13,6 +9,8 @@ END_TS = "end_timestamp"
 # TODO: If the symbol disappears while this is running it will work wrongly,
 #  thankfully that is rare ocurrence, it happened with luna because i deleted it manually..
 # TODO: Get candles from binance to have a selfhealing ws-trades
+from vars_constants import EVENT_TS, DEFAULT_COL_SEARCH, PRICE, QUANTITY, END_TS
+
 
 def transform_trade_data(args):
     from MongoDB.db_actions import insert_many_to_db, connect_to_db, symbol_price_chart_db_name
@@ -41,7 +39,7 @@ def transform_trade_data(args):
 
     finish_ts = get_last_ts_from_db(connect_to_db(transform_db_name), DEFAULT_COL_SEARCH)
     cache = 0
-    price_volume_chart = []
+    price_volume_chart = {}
     while True:
         if last_element_timestamp > finish_ts:
             print("success.")
@@ -53,7 +51,7 @@ def transform_trade_data(args):
                         {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: last_element_timestamp}},
                                        {EVENT_TS: {MongoDB.LOWER_EQ: last_element_timestamp + symbol_price_chart_timeframe * 300}}]}))
 
-        price_volume_chart.append({})
+        #price_volume_chart.append({})
         for symbol, symbol_values in symbols_one_day_trades.items():
             symbol_volume = 0
             symbol_prices = []
@@ -64,19 +62,21 @@ def transform_trade_data(args):
 
             if symbol_volume == 0:
                 continue
-
+            # TODO: Make cached_volume_chart insert many, maybe active sessions reduce.
+            # TODO: change logical sessions and refreshmillis parameter in mongodb
             max_value = max(symbol_prices)
             min_value = min(symbol_prices)
             price_range = (max_value - min_value) / 10
             most_recent_price = get_most_recent_price(symbols_one_day_trades[symbol])
-            price_volume_chart[cache][symbol] = {"last_price_counter": get_counter(min_value, price_range, most_recent_price)}
-            price_volume_chart[cache][symbol]["last_price"] = most_recent_price
-            price_volume_chart[cache][symbol][END_TS] = symbols_one_day_trades[symbol][0][EVENT_TS]
-            price_volume_chart[cache][symbol]["begin_timestamp"] = symbols_one_day_trades[symbol][-1][EVENT_TS]
-            price_volume_chart[cache][symbol]["range_percentage"] = (max_value - min_value) * 100 / max_value
-            price_volume_chart[cache][symbol]["min"] = min_value
-            price_volume_chart[cache][symbol]["max"] = max_value
-            price_volume_chart[cache][symbol]["total_volume"] = symbol_volume
+            #if not price_volume_chart[symbol]
+            price_volume_chart[symbol].append({"last_price_counter": get_counter(min_value, price_range, most_recent_price)})
+            price_volume_chart[symbol][cache]["last_price"] = most_recent_price
+            price_volume_chart[symbol][cache][END_TS] = symbols_one_day_trades[symbol][0][EVENT_TS]
+            price_volume_chart[symbol][cache]["begin_timestamp"] = symbols_one_day_trades[symbol][-1][EVENT_TS]
+            price_volume_chart[symbol][cache]["range_percentage"] = (max_value - min_value) * 100 / max_value
+            price_volume_chart[symbol][cache]["min"] = min_value
+            price_volume_chart[symbol][cache]["max"] = max_value
+            price_volume_chart[symbol][cache]["total_volume"] = symbol_volume
 
         last_element_timestamp += symbol_price_chart_timeframe
         cache += 1

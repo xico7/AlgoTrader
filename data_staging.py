@@ -10,58 +10,14 @@ import requests as requests
 
 from argparse_func import LOG
 from tasks.transform_trade_data import EVENT_TS, PRICE
+from vars_constants import coingecko_marketcap_api_link, SECONDS_TO_MS_APPEND, MongoDB, ONE_MIN_IN_SECS, \
+    FIFTEEN_MIN_IN_MS, SP500_SYMBOLS_USDT_PAIRS, USDT, SYMBOL
 
 
 class UntradedSymbol(Exception): pass
 
 
-SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT',
-                            'DOGEUSDT',
-                            'AVAXUSDT', 'SHIBUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
-                            'BCHUSDT',
-                            'ALGOUSDT',
-                            'MANAUSDT', 'XLMUSDT', 'AXSUSDT', 'VETUSDT', 'FTTUSDT', 'EGLDUSDT', 'ATOMUSDT',
-                            'ICPUSDT',
-                            'FILUSDT',
-                            'HBARUSDT', 'SANDUSDT', 'THETAUSDT', 'FTMUSDT',
-                            'NEARUSDT', 'XMRUSDT', 'KLAYUSDT', 'GALAUSDT', 'HNTUSDT', 'GRTUSDT',
-                            'LRCUSDT']
 
-
-#### Timeframes ####
-
-SECONDS_TO_MS_APPEND = '000'
-
-WEEK_DAYS = 7
-TEN_SECONDS = 10
-ONE_MIN_IN_SECS = 60
-FIVE_MIN_IN_SECS = ONE_MIN_IN_SECS * 5
-FIFTEEN_MIN_IN_SECS = ONE_MIN_IN_SECS * 15
-THIRTY_MIN_IN_SECS = FIFTEEN_MIN_IN_SECS * 2
-ONE_HOUR_IN_SECS = ONE_MIN_IN_SECS * 60
-FOUR_HOUR_IN_SECS = ONE_HOUR_IN_SECS * 4
-ONE_DAY_IN_SECS = ONE_HOUR_IN_SECS * 24
-
-ONE_DAY_IN_MS = ONE_DAY_IN_SECS * 1000
-ONE_HOUR_IN_MS = ONE_HOUR_IN_SECS * 1000
-FIFTEEN_MIN_IN_MS = int(str(FIFTEEN_MIN_IN_SECS) + SECONDS_TO_MS_APPEND)
-ONE_MIN_IN_MS = int(str(ONE_MIN_IN_SECS) + SECONDS_TO_MS_APPEND)
-TEN_SECONDS_IN_MS = int(str(TEN_SECONDS) + SECONDS_TO_MS_APPEND)
-FIVE_SECS_IN_MS = 5000
-
-###################
-
-USDT = "USDT"
-SYMBOL = 'symbol'
-BEGIN_TIMESTAMP = "begin_timestamp"
-
-class MongoDB:
-    EQUAL = '$eq'
-    LOWER_EQ = '$lte'
-    LOWER = '$lt'
-    HIGHER_EQ = '$gte'
-    HIGHER = '$gt'
-    AND = '$and'
 
 
 def remove_usdt(symbols: Union[List[str], str]):
@@ -112,7 +68,8 @@ def sleep_until_time_match(fixed_timestamp):
     return
 
 
-def round_to_last_n_secs(timestamp, number_of_seconds: int):
+def round_to_last_n_secs(timestamp, number_of_seconds: float):
+    number_of_seconds = int(number_of_seconds)
     if len(str(timestamp)) == 13:
         while timestamp % (number_of_seconds * 1000) != 0:
             timestamp -= 1
@@ -152,7 +109,6 @@ def fill_symbol_prices(symbol_prices, end_ts):
 
 
 def coin_ratio():
-    from tasks.ws_trades import coingecko_marketcap_api_link
     return get_symbols_normalized_fund_ratio(remove_usdt(SP500_SYMBOLS_USDT_PAIRS), requests.get(coingecko_marketcap_api_link).json())
 
 
@@ -260,15 +216,7 @@ def optional_add_secs_in_ms(timestamp: Optional[float], milliseconds: int) -> Op
     return timestamp
 
 
-def trades_in_range(trades, begin_ts, iteration):
-    leftover_trades, partial_trades_list = [], []
-    for i, trade in enumerate(trades):
-        if begin_ts + iteration > list(trade.items())[1][1]:
-            partial_trades_list.append(trade)
-        else:
-            leftover_trades.append(trade)
 
-    return leftover_trades, partial_trades_list
 
 
 def get_most_recent_price(symbol_price_data):

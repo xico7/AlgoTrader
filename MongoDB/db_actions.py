@@ -25,7 +25,7 @@ def connect_to_aggtrade_data_db():
 
 
 def connect_to_n_ms_parsed_trades_db(ms_to_parse):
-    return connect_to_db(parsed_trades_all_symbols_db_name.format(ms_to_parse))
+    return connect_to_db(parsed_trades_all_symbols_db_name.format(ms_to_parse/1000))
 
 
 def connect_to_db(db_name):
@@ -38,10 +38,6 @@ def connect_to_sp500_db():
 
 def connect_to_sp500_db_collection():
     return connect_to_sp500_db().get_collection(sp500_db_collection)
-
-
-async def async_insert_many_to_aggtrade_db(data: dict):
-    insert_many_from_dict_async_one(async_connect_to_aggtrade_data_db(), data)
 
 
 def insert_one_to_sp500_db(data: dict):
@@ -64,9 +60,6 @@ def insert_range_db_trades(db_name, ts_begin, symbols_values, symbols_volumes):
 
 
 def insert_many_to_db(db_name, data):
-    for elem in data:
-        for key in list(elem.keys()):
-
     for timeframe in data:
         for key in list(timeframe.keys()):
             try:
@@ -84,7 +77,13 @@ def insert_one(database, collection, data):
     database.get_collection(collection).insert_one(data)
 
 
-def insert_many_from_dict_async_one(database, data):
+def insert_many_aggtrades(data):
+    db = connect_to_aggtrade_data_db()
+    for key in list(data.keys()):
+        db.get_collection(key).insert_many(data[key])
+
+
+def insert_many(database, data):
     for key in list(data.keys()):
         database.get_collection(key).insert_many(data[key])
 
@@ -117,6 +116,10 @@ def delete_all_timeframes_dbs():
 def create_index_db_cols(db_name, field):
     for col in connect_to_db(db_name).list_collection_names():
         connect_to_db(db_name).get_collection(col).create_index([(field, -1)])
+
+
+def query_all_ws_trade_symbols():
+    return connect_to_aggtrade_data_db().list_collection_names()
 
 
 # create_db_time_index("10_seconds_fund_data_trades")
