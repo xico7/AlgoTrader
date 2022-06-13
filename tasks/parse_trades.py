@@ -1,8 +1,8 @@
 import time
-from datetime import datetime
 
-from data_func import ParseSymbolsAggtradeData
-from vars_constants import millisecs_timeframe, secs_parse_interval
+
+from data_func import ParseAggtradeData
+from vars_constants import millisecs_timeframe, default_parse_interval
 
 alive_debug_secs = 90
 
@@ -10,25 +10,27 @@ alive_debug_secs = 90
 # TODO: Fund trades are not parsed here..
 # TODO: don't forget coin_ratios
 def parse_trades_ten_seconds():
-    from MongoDB.Queries import query_wstrade_data_col_timeframe, connect_to_aggtrade_data_db
-    from MongoDB.db_actions import insert_n_secs_parsed_trades_in_db, \
-        parsed_trades_all_symbols_db_name
-    from data_staging import coin_ratio, get_current_second, print_alive_if_passed_timestamp
+    from MongoDB.Queries import query_parsed_aggtrade
+    from MongoDB.db_actions import connect_to_parsed_aggtrade_db
+    from data_staging import coin_ratio, current_milli_time
 
     coin_ratios = coin_ratio()
-    debug_running_execution = get_current_second()
 
-    symbols = connect_to_aggtrade_data_db().list_collection_names()
-    while True:
-        parse_aggtrade = ParseSymbolsAggtradeData(symbols)
-        time1 = time.time()
-
+    symbols = connect_to_parsed_aggtrade_db().list_collection_names()
+    parse_aggtrade = ParseAggtradeData(symbols)
+    while any(parse_aggtrade.start_ts) < current_milli_time() - 60000:
         for symbol in symbols:
-            if trades := query_wstrade_data_col_timeframe(symbol, parse_aggtrade.start_ts[symbol], parse_aggtrade.end_ts[symbol]):
-                parse_aggtrade.parse_trades(trades)
-
+            if trades := query_parsed_aggtrade(symbol, parse_aggtrade.start_ts[symbol], parse_aggtrade.end_ts[symbol]):
+                parse_aggtrade.parse_trades(trades, symbol)
         parse_aggtrade.insert_in_db()
-        insert_n_secs_parsed_trades_in_db(parsed_trades_all_symbols_db_name.format(secs_parse_interval), parse_aggtrade)
+        parse_aggtrade.clear_add_interval()
+
+    else:
+        while True:
+            pass
+        # Do the bundled technique
+
+
 
         ts_begin += millisecs_timeframe
 
@@ -38,10 +40,5 @@ def parse_trades_ten_seconds():
             print("success.")
             exit(0)
 
-        if time.time() - time1 > millisecs_timeframe / 1000:
-            print("Parsing time is greater than range it is parsing, please check the code!!!")
 
-        if print_alive_if_passed_timestamp(debug_running_execution + alive_debug_secs):
-            print(datetime.fromtimestamp(ts_begin/1000))
-            debug_running_execution += alive_debug_secs
 

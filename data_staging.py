@@ -9,9 +9,9 @@ from typing import Union, List, Optional
 import requests as requests
 
 from argparse_func import LOG
-from tasks.transform_trade_data import EVENT_TS, PRICE
+from tasks.transform_trade_data import PRICE
 from vars_constants import coingecko_marketcap_api_link, SECONDS_TO_MS_APPEND, MongoDB, ONE_MIN_IN_SECS, \
-    FIFTEEN_MIN_IN_MS, SP500_SYMBOLS_USDT_PAIRS, USDT, SYMBOL
+    FIFTEEN_MIN_IN_MS, SP500_SYMBOLS_USDT_PAIRS, USDT, SYMBOL, DB_TS, default_parse_interval
 
 
 class UntradedSymbol(Exception): pass
@@ -53,11 +53,11 @@ def ms_to_secs(time_value):
 
 
 def get_last_minute(timestamp):
-    return round_to_last_n_secs(timestamp, 60)
+    return round_last_n_secs(timestamp, 60)
 
 
 def get_last_second(timestamp):
-    round_to_last_n_secs(timestamp, 1)
+    round_last_n_secs(timestamp, 1)
 
 
 def sleep_until_time_match(fixed_timestamp):
@@ -68,16 +68,17 @@ def sleep_until_time_match(fixed_timestamp):
     return
 
 
-def round_to_last_n_secs(timestamp, number_of_seconds: float):
-    number_of_seconds = int(number_of_seconds)
+def round_last_n_secs(timestamp, number_of_seconds: int):
     if len(str(timestamp)) == 13:
-        while timestamp % (number_of_seconds * 1000) != 0:
-            timestamp -= 1
+        number_of_seconds *= 1000  # Convert to ms
+
     while timestamp % number_of_seconds != 0:
         timestamp -= 1
-
     return timestamp
 
+
+def current_milli_time():
+    return round(time.time() * 1000)
 
 def is_new_minute(current_minute, current_time):
     if len(str(current_time)) == 13:
@@ -88,17 +89,17 @@ def is_new_minute(current_minute, current_time):
 
 
 def get_timeframe():
-    if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({EVENT_TS: {MongoDB.HIGHER_EQ: 0}})):
-        return sp500_elements[-1][EVENT_TS]
+    if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({DB_TS: {MongoDB.HIGHER_EQ: 0}})):
+        return sp500_elements[-1][DB_TS]
 
-    return round_to_last_n_secs(get_current_second_in_ms(), ONE_MIN_IN_SECS)
+    return round_last_n_secs(get_current_second_in_ms(), ONE_MIN_IN_SECS)
 
 
 def fill_symbol_prices(symbol_prices, end_ts):
     for symbol in symbol_prices.keys():
-        list_trades = list(mongo.connect_to_aggtrade_data_db().get_collection(symbol).find(
-            {MongoDB.AND: [{EVENT_TS: {MongoDB.HIGHER_EQ: end_ts - FIFTEEN_MIN_IN_MS}},
-                           {EVENT_TS: {MongoDB.LOWER_EQ: end_ts}}]}))
+        list_trades = list(mongo.connect_to_bundled_aggtrade_db().get_collection(symbol).find(
+            {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: end_ts - FIFTEEN_MIN_IN_MS}},
+                           {DB_TS: {MongoDB.LOWER_EQ: end_ts}}]}))
 
         if not list_trades:
             LOG.error("No trades present in aggtrade, make sure trade aggregator is running.")
@@ -195,28 +196,21 @@ def print_alive_if_passed_timestamp(timestamp):
         return True
 
 
-def get_first_ts_from_db(database_conn, collection, ts_filter=pymongo.ASCENDING, timestamp_arg=EVENT_TS):
-    return get_last_ts_from_db(database_conn, collection, ts_filter=ts_filter, timestamp_arg=timestamp_arg)
+def get_first_ts_from_db(database_conn, collection, ts_filter=pymongo.ASCENDING):
+    return query_db_col_oldest_ts(database_conn, collection, ts_filter=ts_filter)
 
 
-def get_last_ts_from_db(database_conn, collection, ts_filter=pymongo.DESCENDING, timestamp_arg=EVENT_TS):
+def query_db_col_oldest_ts(db_name, collection, round_secs=default_parse_interval, init_db=None, ts_filter=pymongo.ASCENDING):
     try:
-        return list(database_conn.get_collection(collection).find(
-            {MongoDB.AND: [{timestamp_arg: {MongoDB.HIGHER_EQ: 0}},
-                           {timestamp_arg: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
-            timestamp_arg, ts_filter).limit(1))[-1][timestamp_arg]
+        return round_last_n_secs(list(mongo.connect_to_db(db_name).get_collection(collection).find(
+            {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: 0}},
+                           {DB_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
+            DB_TS, ts_filter).limit(1))[0][DB_TS], round_secs)
     except IndexError:
-        return None
-
-
-def optional_add_secs_in_ms(timestamp: Optional[float], milliseconds: int) -> Optional[int]:
-    if timestamp:
-        timestamp += milliseconds
-
-    return timestamp
-
-
-
+        if not init_db:
+            return None
+        else:
+            return query_db_col_oldest_ts(init_db, collection)
 
 
 def get_most_recent_price(symbol_price_data):

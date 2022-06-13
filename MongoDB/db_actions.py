@@ -2,12 +2,14 @@ import pymongo
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient as AsyncMotorClient
 from pymongo.errors import OperationFailure
-from tasks.transform_trade_data import PRICE, QUANTITY, EVENT_TS
+from tasks.transform_trade_data import PRICE, QUANTITY
 
 sp500_db_collection = "sp500_volume_highlow_chart"
 fund_trades_database_name = "ten_secs_fund_trades"
 ws_usdt_trades_database_name = "aggtrade_data"
-parsed_trades_all_symbols_db_name = "{}_seconds_parsed_trades"
+parsed_aggtrades = "parsed_aggtrades"
+aggtrades = "aggtrades"
+parsed_trades_base_db = "{}_seconds_parsed_trades"
 parsed_trades_fund_db_name = "{}_seconds_fund_data_trades"
 symbol_price_chart_db_name = 'symbols_price_volume_chart_{}'
 
@@ -20,12 +22,16 @@ def async_connect_to_aggtrade_data_db():
     return AsyncMotorClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()
 
 
-def connect_to_aggtrade_data_db():
-    return MongoClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()
+def connect_to_bundled_aggtrade_db():
+    return MongoClient(f'mongodb://localhost:27017/{aggtrades}').get_default_database()
+
+
+def connect_to_parsed_aggtrade_db():
+    return MongoClient(f'mongodb://localhost:27017/{parsed_aggtrades}').get_default_database()
 
 
 def connect_to_n_ms_parsed_trades_db(ms_to_parse):
-    return connect_to_db(parsed_trades_all_symbols_db_name.format(ms_to_parse/1000))
+    return connect_to_db(parsed_trades_base_db.format(ms_to_parse / 1000))
 
 
 def connect_to_db(db_name):
@@ -44,11 +50,11 @@ def insert_one_to_sp500_db(data: dict):
     insert_one(connect_to_sp500_db(), sp500_db_collection, data)
 
 
-def insert_n_secs_parsed_trades_in_db(db_name, ts_begin, price_data, volume_data):
-    insert_range_db_trades(db_name, ts_begin, price_data, volume_data)
+def insert_n_secs_parsed_trades_in_db(db_name, data):
+    insert_range_db_trades(db_name, data)
 
 
-def insert_range_db_trades(db_name, ts_begin, symbols_values, symbols_volumes):
+def insert_range_db_trades(db_name, data):
     for timeframe_symbols_values in symbols_values:
         for symbol in symbols_values[timeframe_symbols_values].keys():
             try:
@@ -77,15 +83,18 @@ def insert_one(database, collection, data):
     database.get_collection(collection).insert_one(data)
 
 
-def insert_many_aggtrades(data):
-    db = connect_to_aggtrade_data_db()
+def insert_parsed_aggtrades(data):
+    db = connect_to_parsed_aggtrade_db()
     for key in list(data.keys()):
         db.get_collection(key).insert_many(data[key])
 
 
-def insert_many(database, data):
-    for key in list(data.keys()):
-        database.get_collection(key).insert_many(data[key])
+def insert_bundled_aggtrades(data):
+    connect_to_bundled_aggtrade_db().get_collection(f'{aggtrades}').insert_many(data)
+
+
+def insert_many_db(db, data, symbol):
+        connect_to_db(db).get_collection(symbol).insert_many(data)
 
 
 def connect_price_chart_db(timeframe):
@@ -119,7 +128,7 @@ def create_index_db_cols(db_name, field):
 
 
 def query_all_ws_trade_symbols():
-    return connect_to_aggtrade_data_db().list_collection_names()
+    return connect_to_bundled_aggtrade_db().list_collection_names()
 
 
 # create_db_time_index("10_seconds_fund_data_trades")

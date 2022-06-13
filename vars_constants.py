@@ -1,8 +1,8 @@
 ## Config variables, variables that can change how the program behaves are inserted here.
 
 AGGTRADE_PYCACHE = 1000
-millisecs_timeframe = 240000
-secs_parse_interval = 10
+millisecs_timeframe = 60 * 60 * 100
+default_parse_interval = 10
 SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT',
                             'DOGEUSDT',
                             'AVAXUSDT', 'SHIBUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
@@ -21,11 +21,11 @@ SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT
 
 coingecko_marketcap_api_link = "https://api.coingecko.com/api/v3/coins/" \
                                "markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false"
-SYMBOL_S = 's'
+SYMBOL = 'symbol'
 DEFAULT_COL_SEARCH = "BTCUSDT"
-EVENT_TS = "E"
-PRICE = "p"
-QUANTITY = 'q'
+DB_TS = "timestamp"
+PRICE = "price"
+QUANTITY = 'quantity'
 END_TS = "end_timestamp"
 
 #### Timeframes ####
@@ -52,7 +52,6 @@ FIVE_SECS_IN_MS = 5000
 ###################
 
 USDT = "USDT"
-SYMBOL = 'symbol'
 BEGIN_TIMESTAMP = "begin_timestamp"
 
 class MongoDB:

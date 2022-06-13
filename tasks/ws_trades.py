@@ -3,6 +3,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 from binance import AsyncClient, BinanceSocketManager
 import logging
 
+
 from data_func import Aggtrade, CacheAggtrades
 from vars_constants import AGGTRADE_PYCACHE
 
@@ -18,16 +19,17 @@ class QueueOverflow(Exception):
 
 
 async def execute_ws_trades():
+
     from data_staging import usdt_with_bnb_symbols_stream
 
-    cache = CacheAggtrades()
+    cache_symbols_parsed = CacheAggtrades()
     async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_stream("@aggTrade")) as tscm:
         while True:
             try:
                 ws_trade = await tscm.recv()
-                cache.append(vars(Aggtrade(**ws_trade['data'])))
-                if len(cache) > AGGTRADE_PYCACHE:
-                    cache.insert_clear()
+                cache_symbols_parsed.append(vars(Aggtrade(**ws_trade['data'])))
+                if len(cache_symbols_parsed) > AGGTRADE_PYCACHE:
+                    cache_symbols_parsed.insert_clear()
 
             except ServerSelectionTimeoutError as e:
                 if "localhost:27017" in e.args[0]:
