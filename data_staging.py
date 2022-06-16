@@ -5,13 +5,14 @@ import pymongo
 import MongoDB.db_actions as mongo
 import re
 import time
-from typing import Union, List, Optional
+from typing import Union, List
 import requests as requests
 
+from MongoDB.Queries import query_parsed_aggtrade
 from argparse_func import LOG
 from tasks.transform_trade_data import PRICE
 from vars_constants import coingecko_marketcap_api_link, SECONDS_TO_MS_APPEND, MongoDB, ONE_MIN_IN_SECS, \
-    FIFTEEN_MIN_IN_MS, SP500_SYMBOLS_USDT_PAIRS, USDT, SYMBOL, DB_TS, default_parse_interval
+    FIFTEEN_MIN_IN_MS, SP500_SYMBOLS_USDT_PAIRS, USDT, SYMBOL, DB_TS, default_parse_interval, DEFAULT_COL_SEARCH
 
 
 class UntradedSymbol(Exception): pass
@@ -119,6 +120,19 @@ def sum_values(key_values):
         total += value
 
     return total
+
+
+def query_null_or_empty_ws_trades(min_value, max_value, ms_parse_interval):
+    rounded_trades_ts, null_ws_trades = [], []
+    for trade in query_parsed_aggtrade(DEFAULT_COL_SEARCH, min_value, max_value):
+        if round_last_n_secs(trade[DB_TS], ms_parse_interval / 1000) not in rounded_trades_ts:
+            rounded_trades_ts.append(round_last_n_secs(trade[DB_TS], ms_parse_interval / 1000))
+
+    for ts in range(min_value, max_value, ms_parse_interval):
+        if ts not in rounded_trades_ts:
+            null_ws_trades.append(ts)
+
+    return null_ws_trades
 
 
 def debug_prints(start_time):

@@ -1,6 +1,5 @@
-from data_staging import MongoDB
 from MongoDB.db_actions import connect_to_bundled_aggtrade_db, connect_to_parsed_aggtrade_db
-from vars_constants import DB_TS
+from vars_constants import DB_TS, MongoDB
 
 
 def query_parsed_aggtrade(symbol, ts_begin, ts_end):

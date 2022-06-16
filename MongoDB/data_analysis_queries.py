@@ -1,4 +1,4 @@
-from data_staging import ONE_DAY_IN_SECS, BEGIN_TIMESTAMP, MongoDB
+from data_staging import MongoDB
 from MongoDB.db_actions import connect_to_db, connect_price_chart_db
 import matplotlib.pyplot as plt
 

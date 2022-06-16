@@ -94,7 +94,7 @@ def insert_bundled_aggtrades(data):
 
 
 def insert_many_db(db, data, symbol):
-        connect_to_db(db).get_collection(symbol).insert_many(data)
+    connect_to_db(db).get_collection(symbol).insert_many(data)
 
 
 def connect_price_chart_db(timeframe):
