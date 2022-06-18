@@ -2,7 +2,7 @@ import time
 
 
 from data_func import ParseAggtradeData
-from vars_constants import millisecs_timeframe, default_parse_interval
+from vars_constants import millisecs_timeframe
 
 alive_debug_secs = 90
 
@@ -10,16 +10,15 @@ alive_debug_secs = 90
 # TODO: Fund trades are not parsed here..
 # TODO: don't forget coin_ratios
 def parse_trades_ten_seconds():
-    from MongoDB.Queries import query_parsed_aggtrade
+    from MongoDB.Queries import query_parsed_aggtrade_multiple_timeframes
     from MongoDB.db_actions import connect_to_parsed_aggtrade_db
-    from data_staging import coin_ratio, current_milli_time
-
+    from data_staging import current_milli_time
     parse_aggtrade = ParseAggtradeData()
 
     while any(parse_aggtrade.start_ts) < current_milli_time() - 60000:
-        for symbol in connect_to_parsed_aggtrade_db().list_collection_names():
-            if trades := query_parsed_aggtrade(symbol, parse_aggtrade.start_ts[symbol], parse_aggtrade.end_ts[symbol]):
-                parse_aggtrade.parse_trades(trades, symbol)
+        parse_aggtrade += query_parsed_aggtrade_multiple_timeframes(
+            connect_to_parsed_aggtrade_db().list_collection_names(), parse_aggtrade.start_ts, parse_aggtrade.end_ts)
+
         parse_aggtrade.insert_in_db()
         parse_aggtrade.reset_add_interval()
         print("1hour done")
@@ -40,4 +39,12 @@ def parse_trades_ten_seconds():
             exit(0)
 
 
-
+#
+# 1hour done
+# 1655071770000
+# 1hour done
+# 1655075370000
+# 1hour done
+# 1655078970000
+# 1hour done
+# 1655082570000

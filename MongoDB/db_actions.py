@@ -1,10 +1,7 @@
 import pymongo
 from pymongo import MongoClient
-from motor.motor_asyncio import AsyncIOMotorClient as AsyncMotorClient
 from pymongo.errors import OperationFailure
-from tasks.transform_trade_data import PRICE, QUANTITY
 
-sp500_db_collection = "sp500_volume_highlow_chart"
 fund_trades_database_name = "ten_secs_fund_trades"
 ws_usdt_trades_database_name = "aggtrade_data"
 parsed_aggtrades = "parsed_aggtrades"
@@ -16,10 +13,6 @@ symbol_price_chart_db_name = 'symbols_price_volume_chart_{}'
 
 def list_database_names():
     return list(MongoClient("mongodb://localhost:27017/").list_database_names())
-
-
-def async_connect_to_aggtrade_data_db():
-    return AsyncMotorClient(f'mongodb://localhost:27017/{ws_usdt_trades_database_name}').get_default_database()
 
 
 def connect_to_bundled_aggtrade_db():
@@ -36,33 +29,6 @@ def connect_to_n_ms_parsed_trades_db(ms_to_parse):
 
 def connect_to_db(db_name):
     return MongoClient(f'mongodb://localhost:27017/{db_name}').get_default_database()
-
-
-def connect_to_sp500_db():
-    return MongoClient(f'mongodb://localhost:27017/{fund_trades_database_name}').get_default_database()
-
-
-def connect_to_sp500_db_collection():
-    return connect_to_sp500_db().get_collection(sp500_db_collection)
-
-
-def insert_one_to_sp500_db(data: dict):
-    insert_one(connect_to_sp500_db(), sp500_db_collection, data)
-
-
-def insert_n_secs_parsed_trades_in_db(db_name, data):
-    insert_range_db_trades(db_name, data)
-
-
-def insert_range_db_trades(db_name, data):
-    for timeframe_symbols_values in symbols_values:
-        for symbol in symbols_values[timeframe_symbols_values].keys():
-            try:
-                connect_to_db(db_name).get_collection(symbol).insert_one(
-                    {EVENT_TS: ts_begin + timeframe_symbols_values, PRICE: symbols_values[timeframe_symbols_values][symbol], QUANTITY: symbols_volumes[timeframe_symbols_values][symbol]})
-            except pymongo.errors.DuplicateKeyError:
-                # skip document because it already exists in new collection
-                continue
 
 
 def insert_many_to_db(db_name, data):
@@ -97,10 +63,6 @@ def insert_many_db(db, data, symbol):
     connect_to_db(db).get_collection(symbol).insert_many(data)
 
 
-def connect_price_chart_db(timeframe):
-    return MongoClient(f'mongodb://localhost:27017/{symbol_price_chart_db_name.format(timeframe)}').get_default_database()
-
-
 def create_db_time_index(db_name, timestamp_var='E'):
     db_conn = connect_to_db(db_name)
     for col_name in db_conn.list_collection_names():
@@ -111,9 +73,6 @@ def create_db_time_index(db_name, timestamp_var='E'):
         except OperationFailure as e:
             continue
 
-
-# def connect_to_algo_alpha_db():
-#     return MongoClient('mongodb://localhost:27017/algo_alpha').get_default_database()
 
 def delete_all_timeframes_dbs():
     mongo_client = MongoClient(f'mongodb://localhost:27017/')
