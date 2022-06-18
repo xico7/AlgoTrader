@@ -1,10 +1,6 @@
 import time
-
-
 from data_func import ParseAggtradeData
-from vars_constants import millisecs_timeframe
-
-alive_debug_secs = 90
+from vars_constants import millisecs_timeframe, ONE_MIN_IN_MS
 
 
 # TODO: Fund trades are not parsed here..
@@ -13,9 +9,10 @@ def parse_trades_ten_seconds():
     from MongoDB.Queries import query_parsed_aggtrade_multiple_timeframes
     from MongoDB.db_actions import connect_to_parsed_aggtrade_db
     from data_staging import current_milli_time
+
     parse_aggtrade = ParseAggtradeData()
 
-    while any(parse_aggtrade.start_ts) < current_milli_time() - 60000:
+    while any(parse_aggtrade.start_ts) < current_milli_time() - ONE_MIN_IN_MS:
         parse_aggtrade += query_parsed_aggtrade_multiple_timeframes(
             connect_to_parsed_aggtrade_db().list_collection_names(), parse_aggtrade.start_ts, parse_aggtrade.end_ts)
 
@@ -38,13 +35,3 @@ def parse_trades_ten_seconds():
             print("success.")
             exit(0)
 
-
-#
-# 1hour done
-# 1655071770000
-# 1hour done
-# 1655075370000
-# 1hour done
-# 1655078970000
-# 1hour done
-# 1655082570000

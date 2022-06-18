@@ -94,14 +94,17 @@ def query_existing_ws_trades(min_val, max_val, ms_parse_interval):
     existing_trade_test_interval_in_ms = 3000000
     existing_trades = []
     test_range = list(range(min_val, max_val, existing_trade_test_interval_in_ms))
+
+    #TODO: Join these two.. they are so similar
     for elem in test_range:
-        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, elem, elem + existing_trade_test_interval_in_ms)[DEFAULT_COL_SEARCH]:
+        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, elem, elem + existing_trade_test_interval_in_ms):
             existing_trades += list(range(elem, elem + existing_trade_test_interval_in_ms, ms_parse_interval))
     else:
-        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, test_range[-1], max_val)[DEFAULT_COL_SEARCH]:
+        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, test_range[-1], max_val):
             existing_trades += list(range(test_range[-1], max_val, ms_parse_interval))
 
     return existing_trades
+
 
 def transform_data(data, *keys):
     data_keys = {}

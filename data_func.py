@@ -74,7 +74,7 @@ class ParseAggtradeData:
         if not (start_ts and end_ts):
             for symbol in self._symbols:
                 self.start_ts[symbol] = query_db_col_newest_ts(self._db_name, symbol, init_db='parsed_aggtrades')
-                possible_timeframe = self.start_ts[symbol] + self._timeframe
+                possible_timeframe = self.start_ts[symbol] + self._timeframe - 1
                 self.end_ts[symbol] = possible_timeframe if possible_timeframe < current_milli_time() else current_milli_time()
 
         existing_trades = query_existing_ws_trades(min(list(self.start_ts.values())),
@@ -88,10 +88,8 @@ class ParseAggtradeData:
 
     def insert_in_db(self):
         for symbol, symbol_ts_data in self.ts_data.items():
-            new_data = []
-            for timeframe in symbol_ts_data:
-                new_data.append({DB_TS: timeframe, **symbol_ts_data[timeframe]})
-            insert_many_db(self._db_name, new_data, symbol)
+            insert_many_db(self._db_name,
+                           [{DB_TS: timeframe, **symbol_ts_data[timeframe]} for timeframe in symbol_ts_data], symbol)
 
     def reset_add_interval(self):
         for symbol in self._symbols:

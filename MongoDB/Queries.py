@@ -1,33 +1,19 @@
-from MongoDB.db_actions import connect_to_bundled_aggtrade_db, connect_to_parsed_aggtrade_db
+from MongoDB.db_actions import connect_to_db, parsed_aggtrades
 from vars_constants import DB_TS, MongoDB
 
 
-def query_parsed_aggtrade(symbols, ts_begin, ts_end):
-    aggtrades = {}
+def query_parsed_aggtrade(symbol, ts_begin, ts_end):
+    return query_db_col_highereq_lowereq(parsed_aggtrades, symbol, ts_begin, ts_end)
 
-    if isinstance(symbols, str):
-        symbols = [symbols]
 
-    for symbol in symbols:
-        aggtrades[symbol] = list(connect_to_parsed_aggtrade_db().get_collection(symbol).find(
-            {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: ts_begin}},
-                           {DB_TS: {MongoDB.LOWER_EQ: ts_end}}]}))
-
-    return aggtrades
+def query_db_col_highereq_lowereq(db_name, col_name, highereq, lowereq, column_name=DB_TS):
+    return list(connect_to_db(db_name).get_collection(col_name).find(
+        {MongoDB.AND: [{column_name: {MongoDB.HIGHER_EQ: highereq}},
+                       {column_name: {MongoDB.LOWER_EQ: lowereq}}]}))
 
 
 def query_parsed_aggtrade_multiple_timeframes(symbols: list, ts_begin, ts_end):
-    aggtrades = {}
-
-    for symbol in symbols:
-        aggtrades[symbol] = query_parsed_aggtrade(symbol, ts_begin[symbol], ts_end[symbol])[symbol]
-
-    return aggtrades
-
-def query_bundled_aggtrade(symbol, ts_begin, ts_end):
-    return list(connect_to_bundled_aggtrade_db().get_collection(symbol).find(
-        {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: ts_begin}},
-                       {DB_TS: {MongoDB.LOWER_EQ: ts_end}}]}))
+    return {symbol: query_parsed_aggtrade(symbol, ts_begin[symbol], ts_end[symbol]) for symbol in symbols}
 
 
 
