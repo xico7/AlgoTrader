@@ -1,98 +1,69 @@
 import time
+from vars_constants import DB_TS, FIVE_SECS_IN_MS
+from MongoDB.Queries import query_db_col_newest_ts, query_db_col_highereq_lowereq
+from MongoDB.db_actions import connect_to_db, trades_price_quantity_chart_db_name, insert_many_to_db
+from data_staging import get_counter
 
 
-
-# TODO: Verify if data is being well inserted in parsed-trades, if all
-#  collections have same size they should be, if they don't its probably not a big deal but harder to verify..
-
-# TODO: Done for all symbols, do the same for fund.
-# TODO: If the symbol disappears while this is running it will work wrongly,
-#  thankfully that is rare ocurrence, it happened with luna because i deleted it manually..
-# TODO: Get candles from binance to have a selfhealing ws-trades
-from vars_constants import DEFAULT_COL_SEARCH, PRICE, QUANTITY, END_TS, DB_TS
+# TODO: Make cached_volume_chart insert many, maybe active sessions reduce.
+# TODO: change logical sessions and refreshmillis parameter in mongodb
 
 
 def transform_trade_data(args):
-    from MongoDB.db_actions import insert_many_to_db, connect_to_db, symbol_price_chart_db_name
-    from data_staging import get_counter, query_db_col_oldest_ts, MongoDB, TEN_SECONDS_IN_MS, FIVE_SECS_IN_MS, ONE_DAY_IN_MS, \
-        get_most_recent_price, get_first_ts_from_db
 
+    finish_ts = time.time() * 1000
     transform_db_name = args['transform_trade_data_db_name']
-    db_cols = connect_to_db(transform_db_name).list_collection_names()
+    price_volume_chart, cache = {}, 0
 
-    symbol_price_chart_timeframe = TEN_SECONDS_IN_MS
-    if not (first_element_timestamp := optional_add_secs_in_ms(query_db_col_oldest_ts(connect_to_db(symbol_price_chart_db_name), DEFAULT_COL_SEARCH,
-                                                                                      timestamp_arg='end_timestamp'), symbol_price_chart_timeframe)):
-        first_element_timestamp = get_first_ts_from_db(connect_to_db(transform_db_name), DEFAULT_COL_SEARCH)
+    symbols_one_day_trades, symbols_append_trades, start_ts, end_ts, ts_data = {}, {}, {}, {}, {}
+    for symbol in connect_to_db(transform_db_name).list_collection_names():
+        start_ts[symbol] = query_db_col_newest_ts(trades_price_quantity_chart_db_name.format(args['transform_trade_data_chart_minutes']), symbol, init_db=transform_db_name)
+        end_ts[symbol] = start_ts[symbol] + (args['transform_trade_data_chart_minutes'] * 60 * 1000) + FIVE_SECS_IN_MS
+        symbols_one_day_trades[symbol] = query_db_col_highereq_lowereq(transform_db_name, symbol, start_ts[symbol], end_ts[symbol])
+        price_volume_chart[symbol] = []
+        # price_volume_chart[symbol]["min"], price_volume_chart[symbol]["max"] = [], []
+        # price_volume_chart[symbol]['end_ts'], price_volume_chart[symbol]["begin_ts"] = [], []
+        # price_volume_chart[symbol]["last_price"], price_volume_chart[symbol]["range_percentage"] = [], []
+        # price_volume_chart[symbol]["total_volume"], price_volume_chart[symbol]["last_price_counter"] = [], []
+    print("here")
 
-    last_element_timestamp = first_element_timestamp + args['transform_trade_data_chart_milliseconds'] + FIVE_SECS_IN_MS
 
-    symbols_one_day_trades = {}
-    for col in db_cols:
-        timeframe_data = list(connect_to_db(transform_db_name).get_collection(col).find(
-            {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: first_element_timestamp}},
-                           {DB_TS: {MongoDB.LOWER_EQ: last_element_timestamp}}]}))
-        if len(timeframe_data) > (last_element_timestamp - first_element_timestamp) / 10000 - 1:
-            symbols_one_day_trades[col] = timeframe_data
 
-    symbols_append_trades = {}
+    while max(list(end_ts.values())) < finish_ts:
+        if cache == 0:
+            for symbol in symbols_one_day_trades.keys():
+                symbols_append_trades[symbol] = query_db_col_highereq_lowereq(transform_db_name, symbol, end_ts[symbol],
+                                                                              end_ts[symbol] + 30 * 10000)
 
-    finish_ts = query_db_col_oldest_ts(connect_to_db(transform_db_name), DEFAULT_COL_SEARCH)
-    cache = 0
-    price_volume_chart = {}
-    while True:
-        if last_element_timestamp > finish_ts:
-            print("success.")
-            exit(0)
-        time1 = time.time()
-        if not symbols_append_trades or not symbols_append_trades[DEFAULT_COL_SEARCH]:
-            for symbol in db_cols:
-                symbols_append_trades[symbol] = list(connect_to_db(transform_db_name).get_collection(symbol).find(
-                        {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: last_element_timestamp}},
-                                       {DB_TS: {MongoDB.LOWER_EQ: last_element_timestamp + symbol_price_chart_timeframe * 300}}]}))
-
-        #price_volume_chart.append({})
         for symbol, symbol_values in symbols_one_day_trades.items():
-            symbol_volume = 0
-            symbol_prices = []
-            for elem in symbol_values:
-                if elem[PRICE]:
-                    symbol_prices.append(float(elem[PRICE]))
-                    symbol_volume += float(elem[QUANTITY])
+            max_value = max([symbol['price'] for symbol in symbol_values if symbol['price']])
+            min_value = min([symbol['price'] for symbol in symbol_values if symbol['price']])
+            price_range = ((max_value - min_value) * 100 / max_value)
+            most_recent_price = [trade['price'] for trade in symbol_values if trade['price']][-1]
+            price_volume_chart[symbol].append({"min": min_value,
+                                               "max": max_value,
+                                               'end_ts': symbols_one_day_trades[symbol][0][DB_TS],
+                                               'begin_ts': symbols_one_day_trades[symbol][-1][DB_TS],
+                                               'last_price': most_recent_price,
+                                               'range_percentage': price_range,
+                                               'total_volume': sum([trade['quantity'] for trade in symbol_values if trade['quantity']]),
+                                               'last_price_counter': get_counter(min_value, price_range, most_recent_price)})
 
-            if symbol_volume == 0:
-                continue
-            # TODO: Make cached_volume_chart insert many, maybe active sessions reduce.
-            # TODO: change logical sessions and refreshmillis parameter in mongodb
-            max_value = max(symbol_prices)
-            min_value = min(symbol_prices)
-            price_range = (max_value - min_value) / 10
-            most_recent_price = get_most_recent_price(symbols_one_day_trades[symbol])
-            #if not price_volume_chart[symbol]
-            price_volume_chart[symbol].append({"last_price_counter": get_counter(min_value, price_range, most_recent_price)})
-            price_volume_chart[symbol][cache]["last_price"] = most_recent_price
-            price_volume_chart[symbol][cache][END_TS] = symbols_one_day_trades[symbol][0][DB_TS]
-            price_volume_chart[symbol][cache]["begin_timestamp"] = symbols_one_day_trades[symbol][-1][DB_TS]
-            price_volume_chart[symbol][cache]["range_percentage"] = (max_value - min_value) * 100 / max_value
-            price_volume_chart[symbol][cache]["min"] = min_value
-            price_volume_chart[symbol][cache]["max"] = max_value
-            price_volume_chart[symbol][cache]["total_volume"] = symbol_volume
 
-        last_element_timestamp += symbol_price_chart_timeframe
+        for symbol, symbol_values in symbols_one_day_trades.items():
+            symbol_values.pop(0)
+            symbol_values.append(symbols_append_trades[symbol][0])
+            symbols_append_trades[symbol].pop(0)
+
         cache += 1
         if cache == 30:
-            insert_many_to_db(symbol_price_chart_db_name.format(args['transform_trade_data_chart_milliseconds']), price_volume_chart)
-            price_volume_chart = [{}]
+            insert_many_to_db(trades_price_quantity_chart_db_name.format(args['transform_trade_data_chart_minutes']), price_volume_chart)
+            price_volume_chart = []
             cache = 0
 
-        for symbol, symbol_values in symbols_one_day_trades.items():
-            symbol_values.pop()
-            symbol_values.insert(0, symbols_append_trades[symbol][-1])
-            symbols_append_trades[symbol].pop()
 
-
-        print(time.time() - time1)
-
+    print("success.")
+    exit(0)
 
 
 

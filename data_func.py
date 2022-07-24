@@ -1,10 +1,10 @@
-
+from MongoDB.Queries import query_db_col_newest_ts, query_existing_ws_trades
 from support.decorators_extenders import init_only_existing
 from vars_constants import PRICE, QUANTITY, SYMBOL, DB_TS, millisecs_timeframe, default_parse_interval
 from dataclasses import dataclass
 from MongoDB.db_actions import insert_bundled_aggtrades, \
     insert_parsed_aggtrades, connect_to_parsed_aggtrade_db, parsed_trades_base_db, insert_many_db
-from data_staging import query_db_col_newest_ts, round_last_n_secs, current_milli_time, query_existing_ws_trades
+from data_staging import round_last_n_secs, current_milli_time
 
 
 class CacheAggtrades(dict):
@@ -48,13 +48,13 @@ class Aggtrade:
         return args, kwargs
 
 
-class ParseAggtradeData:
-    def __init__(self, parse_interval_in_secs=default_parse_interval, symbols=connect_to_parsed_aggtrade_db().list_collection_names()):
+class ParseTradeData:
+    def __init__(self, timeframe_in_ms, db_name, parse_interval_in_secs=default_parse_interval, symbols=connect_to_parsed_aggtrade_db().list_collection_names()):
         self.ms_parse_interval = parse_interval_in_secs * 1000
         self.end_ts, self.start_ts, self.ts_data = {}, {}, {}
         self._symbols = symbols
-        self._db_name = parsed_trades_base_db.format(default_parse_interval)
-        self._timeframe = millisecs_timeframe
+        self.db_name = db_name
+        self.timeframe = timeframe_in_ms
         self.init_price_volume()
 
     def __iadd__(self, trades):
@@ -73,8 +73,8 @@ class ParseAggtradeData:
     def init_price_volume(self, start_ts=None, end_ts=None):
         if not (start_ts and end_ts):
             for symbol in self._symbols:
-                self.start_ts[symbol] = query_db_col_newest_ts(self._db_name, symbol, init_db='parsed_aggtrades')
-                possible_timeframe = self.start_ts[symbol] + self._timeframe - 1
+                self.start_ts[symbol] = query_db_col_newest_ts(self.db_name, symbol, init_db='parsed_aggtrades')
+                possible_timeframe = self.start_ts[symbol] + self.timeframe - 1
                 self.end_ts[symbol] = possible_timeframe if possible_timeframe < current_milli_time() else current_milli_time()
 
         existing_trades = query_existing_ws_trades(min(list(self.start_ts.values())),
@@ -88,11 +88,11 @@ class ParseAggtradeData:
 
     def insert_in_db(self):
         for symbol, symbol_ts_data in self.ts_data.items():
-            insert_many_db(self._db_name,
+            insert_many_db(self.db_name,
                            [{DB_TS: timeframe, **symbol_ts_data[timeframe]} for timeframe in symbol_ts_data], symbol)
 
     def reset_add_interval(self):
         for symbol in self._symbols:
-            self.start_ts[symbol] += self._timeframe
-            self.end_ts[symbol] += self._timeframe
+            self.start_ts[symbol] += self.timeframe
+            self.end_ts[symbol] += self.timeframe
         self.init_price_volume(self.start_ts, self.end_ts)

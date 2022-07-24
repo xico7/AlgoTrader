@@ -1,12 +1,10 @@
 from datetime import datetime
-import pymongo
-import MongoDB.db_actions as mongo
+import requests
 import re
 import time
 from typing import Union, List
-
-from MongoDB.Queries import query_parsed_aggtrade
-from vars_constants import coingecko_marketcap_api_link, MongoDB, DB_TS, default_parse_interval, DEFAULT_COL_SEARCH, SECONDS_TO_MS_APPEND
+from vars_constants import coingecko_marketcap_api_link, MongoDB, DB_TS, default_parse_interval, DEFAULT_COL_SEARCH, \
+    SECONDS_TO_MS_APPEND, USDT
 
 
 class UntradedSymbol(Exception): pass
@@ -90,22 +88,6 @@ def sum_values(key_values):
     return total
 
 
-def query_existing_ws_trades(min_val, max_val, ms_parse_interval):
-    existing_trade_test_interval_in_ms = 3000000
-    existing_trades = []
-    test_range = list(range(min_val, max_val, existing_trade_test_interval_in_ms))
-
-    #TODO: Join these two.. they are so similar
-    for elem in test_range:
-        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, elem, elem + existing_trade_test_interval_in_ms):
-            existing_trades += list(range(elem, elem + existing_trade_test_interval_in_ms, ms_parse_interval))
-    else:
-        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, test_range[-1], max_val):
-            existing_trades += list(range(test_range[-1], max_val, ms_parse_interval))
-
-    return existing_trades
-
-
 def transform_data(data, *keys):
     data_keys = {}
     for key in keys:
@@ -120,16 +102,16 @@ def transform_data(data, *keys):
 
 
 # TODO: isto não está a fazer nada.. lol
-# def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
-#     symbols = usdt_symbols_stream(type_of_trade)
-#     bnb_symbols = []
-#     for symbol in symbols:
-#         bnb_suffix_elem_search = symbol.replace(USDT, "BNB")
-#         bnb_prefix_elem_search = "BNB" + symbol.replace(USDT, "")
-#         if bnb_suffix_elem_search in symbol or bnb_prefix_elem_search in symbol:
-#             bnb_symbols.append(symbol)
-#
-#     return bnb_symbols
+def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
+    symbols = usdt_symbols_stream(type_of_trade)
+    bnb_symbols = []
+    for symbol in symbols:
+        bnb_suffix_elem_search = symbol.replace(USDT, "BNB")
+        bnb_prefix_elem_search = "BNB" + symbol.replace(USDT, "")
+        if bnb_suffix_elem_search in symbol or bnb_prefix_elem_search in symbol:
+            bnb_symbols.append(symbol)
+
+    return bnb_symbols
 
 
 
@@ -151,28 +133,7 @@ def print_alive_if_passed_timestamp(timestamp):
         return True
 
 
-def get_first_ts_from_db(database_conn, collection, ts_filter=pymongo.ASCENDING):
-    return query_db_col_oldest_ts(database_conn, collection, ts_filter=ts_filter)
 
-#TODO: Melhorar isto
-def query_db_col_oldest_ts(db_name, collection, round_secs=default_parse_interval, ts_filter=pymongo.ASCENDING):
-    return round_last_n_secs(list(mongo.connect_to_db(db_name).get_collection(collection).find(
-        {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: 0}},
-                       {DB_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
-        DB_TS, ts_filter).limit(1))[0][DB_TS], round_secs)
-
-
-def query_db_col_newest_ts(db_name, collection, round_secs=default_parse_interval, init_db=None, ts_filter=pymongo.DESCENDING):
-    try:
-        return round_last_n_secs(list(mongo.connect_to_db(db_name).get_collection(collection).find(
-            {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: 0}},
-                           {DB_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
-            DB_TS, ts_filter).limit(1))[0][DB_TS], round_secs)
-    except IndexError:
-        if not init_db:
-            return None
-        else:
-            return query_db_col_oldest_ts(init_db, collection)
 
 #
 # def get_timeframe():
@@ -195,16 +156,16 @@ def query_db_col_newest_ts(db_name, collection, round_secs=default_parse_interva
 #
 #     return
 
-# def usdt_symbols_stream(type_of_trade: str) -> list:
-#     binance_symbols_price = requests.get("https://api.binance.com/api/v3/ticker/price").json()
-#
-#     binance_symbols = []
-#     for symbol_info in binance_symbols_price:
-#         symbol = symbol_info["symbol"]
-#         if USDT in symbol:
-#             binance_symbols.append(symbol)
-#
-#     return [f"{symbol.lower()}{type_of_trade}" for symbol in binance_symbols]
+def usdt_symbols_stream(type_of_trade: str) -> list:
+    binance_symbols_price = requests.get("https://api.binance.com/api/v3/ticker/price").json()
+
+    binance_symbols = []
+    for symbol_info in binance_symbols_price:
+        symbol = symbol_info["symbol"]
+        if USDT in symbol:
+            binance_symbols.append(symbol)
+
+    return [f"{symbol.lower()}{type_of_trade}" for symbol in binance_symbols]
 #
 # def get_symbols_normalized_fund_ratio(symbol_pairs: dict, symbols_information: dict):
 #     coin_ratio = {}

@@ -30,29 +30,32 @@ def algo_argparse():
         subparser.add_parser(element.name.replace("_", "-"))
 
     subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO", choices=list_database_names())
-    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-chart-milliseconds", type=int, required=True, help="TODO")
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-chart-minutes", type=int, required=True, help="TODO")
     return parent_parser.parse_args()
 
 
+def import_module_name(module_name):
+    __import__(module_name)
+
 def get_execute_function(parsed_args):
     import tasks
-    execute_functions = []
 
+    base_execute_module_name = parsed_args.command.replace("-", "_")
     for element in pkgutil.iter_modules(tasks.__path__):
-        if element.name == parsed_args.command.replace("-", "_"):
-            __import__(f"{tasks.__name__}.{element.name}")
+        if base_execute_module_name == element.name:
+            execute_module_path = f"{tasks.__name__}.{base_execute_module_name}"
+            import_module_name(execute_module_path)
 
-            for function in getmembers(getattr(tasks, element.name), isfunction):
-                if str.lstrip(function[0], '_') == function[0]:
-                    execute_functions.append(function[1])
+            execute_module_functions = getmembers(getattr(tasks, base_execute_module_name), isfunction)
+            execute_function = None
 
-            if len(execute_functions) == 1:
-                return execute_functions[0](vars(parsed_args)) if inspect.getfullargspec(execute_functions[0]).args \
-                        else execute_functions[0]
+            for function in execute_module_functions:
+                if function[1].__module__ == execute_module_path:
+                    if not execute_function:
+                        execute_function = function[1]
+                    else:
+                        LOG.error("Task modules need one and only one callable function instead of %s.", execute_function)
+                        exit(1)
             else:
-                LOG.error("Task modules need one and only one callable function instead of %s.", execute_functions)
-                exit(1)
-
-
-
-
+                function_args = vars(parsed_args) if inspect.getfullargspec(execute_function).args else None
+                return execute_function, function_args
