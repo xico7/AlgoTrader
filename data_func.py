@@ -1,9 +1,9 @@
-from MongoDB.Queries import query_db_col_newest_ts, query_existing_ws_trades
 from support.decorators_extenders import init_only_existing
-from vars_constants import PRICE, QUANTITY, SYMBOL, DB_TS, millisecs_timeframe, default_parse_interval
+from vars_constants import PRICE, QUANTITY, SYMBOL, DB_TS, DEFAULT_PARSE_INTERVAL, MILLISECS_TIMEFRAME, \
+    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB
 from dataclasses import dataclass
-from MongoDB.db_actions import insert_bundled_aggtrades, \
-    insert_parsed_aggtrades, connect_to_parsed_aggtrade_db, parsed_trades_base_db, insert_many_db
+from MongoDB.db_actions import insert_bundled_aggtrades, insert_parsed_aggtrades, \
+    connect_to_parsed_aggtrade_db, insert_many_db, query_starting_ts, query_existing_ws_trades
 from data_staging import round_last_n_secs, current_milli_time
 
 
@@ -39,6 +39,7 @@ class Aggtrade:
     price: float
     quantity: float
 
+
     def _pre_init__(self, *args, **kwargs):
         kwargs[SYMBOL] = kwargs['s']
         kwargs[DB_TS] = int(kwargs['E'])
@@ -49,11 +50,11 @@ class Aggtrade:
 
 
 class ParseTradeData:
-    def __init__(self, timeframe_in_ms, db_name, parse_interval_in_secs=default_parse_interval, symbols=connect_to_parsed_aggtrade_db().list_collection_names()):
+    def __init__(self, timeframe_in_ms=MILLISECS_TIMEFRAME, db_name=PARSED_TRADES_BASE_DB, parse_interval_in_secs=DEFAULT_PARSE_INTERVAL, symbols=connect_to_parsed_aggtrade_db().list_collection_names()):
         self.ms_parse_interval = parse_interval_in_secs * 1000
         self.end_ts, self.start_ts, self.ts_data = {}, {}, {}
         self._symbols = symbols
-        self.db_name = db_name
+        self.db_name = db_name.format(parse_interval_in_secs)
         self.timeframe = timeframe_in_ms
         self.init_price_volume()
 
@@ -73,7 +74,7 @@ class ParseTradeData:
     def init_price_volume(self, start_ts=None, end_ts=None):
         if not (start_ts and end_ts):
             for symbol in self._symbols:
-                self.start_ts[symbol] = query_db_col_newest_ts(self.db_name, symbol, init_db='parsed_aggtrades')
+                self.start_ts[symbol] = query_starting_ts(self.db_name, symbol, init_db=PARSED_AGGTRADES_DB)
                 possible_timeframe = self.start_ts[symbol] + self.timeframe - 1
                 self.end_ts[symbol] = possible_timeframe if possible_timeframe < current_milli_time() else current_milli_time()
 

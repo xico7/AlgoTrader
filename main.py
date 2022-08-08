@@ -1,13 +1,10 @@
 import asyncio
 import inspect
-import traceback
-
 import argparse_func as argp
+from support.helper_func import output_error
 
 
 def main():
-    # TODO: Improve function args remove verbosity command etc.. use only related with task.
-    # TODO: Improve how *args works.. [0] None não gosto.
     parser = argp.algo_argparse()
     function_to_call, function_args = argp.get_execute_function(parser)
 
@@ -17,15 +14,12 @@ def main():
         function_to_call(function_args) if function_args else function_to_call()
 
 
-async def asyncmain(func, *args):
+async def asyncmain(func, args):
     while True:
         try:
-            await func(*args) if args[0] else await func()
+            await func(*args) if args else await func()
         except Exception as e:
-            traceback.print_exc()
-            print(f"{e}")
-            exit(1)
-
+            output_error(e)
 
 main()
 

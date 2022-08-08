@@ -3,21 +3,23 @@ import requests
 import re
 import time
 from typing import Union, List
-from vars_constants import coingecko_marketcap_api_link, MongoDB, DB_TS, default_parse_interval, DEFAULT_COL_SEARCH, \
-    SECONDS_TO_MS_APPEND, USDT
+from vars_constants import SECONDS_TO_MS_APPEND, USDT
 
 
 class UntradedSymbol(Exception): pass
 
 
 def remove_usdt(symbols: Union[List[str], str]):
+    def match(symbol_or_symbols):
+        return re.match('(^(.+?)USDT)', symbol_or_symbols).groups()[1].upper()
+
     if isinstance(symbols, str):
         try:
-            return re.match('(^(.+?)USDT)', symbols).groups()[1].upper()
-        except AttributeError as e:
+            return match(symbols)
+        except AttributeError:
             return None
     else:
-        return [re.match('(^(.+?)USDT)', symbol).groups()[1].upper() for symbol in symbols]
+        return [match(symbol) for symbol in symbols]
 
 
 def get_current_second() -> int:
@@ -37,9 +39,13 @@ def sec_to_ms(time_value):
         return float(split_decimal_tv[0] + SECONDS_TO_MS_APPEND + '.' + split_decimal_tv[1])
 
 
+def mins_to_ms(minutes):
+    mins_in_ms = minutes * 60 * 1000
+    return int(mins_in_ms) if isinstance(minutes, int) else mins_in_ms
+
+
 def ms_to_secs(time_value):
     return time_value / 1000
-
 
 
 def get_last_minute(timestamp):
@@ -127,35 +133,6 @@ def get_counter(min_value, range, price):
     return str(counter)
 
 
-def print_alive_if_passed_timestamp(timestamp):
-    if get_current_second() > timestamp:
-        print(datetime.fromtimestamp(get_current_second()))
-        return True
-
-
-
-
-#
-# def get_timeframe():
-#     if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({DB_TS: {MongoDB.HIGHER_EQ: 0}})):
-#         return sp500_elements[-1][DB_TS]
-#
-#     return round_last_n_secs(get_current_second_in_ms(), ONE_MIN_IN_SECS)
-#
-#
-# def fill_symbol_prices(symbol_prices, end_ts):
-#     for symbol in symbol_prices.keys():
-#         list_trades = list(mongo.connect_to_bundled_aggtrade_db().get_collection(symbol).find(
-#             {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: end_ts - FIFTEEN_MIN_IN_MS}},
-#                            {DB_TS: {MongoDB.LOWER_EQ: end_ts}}]}))
-#
-#         if not list_trades:
-#             LOG.error("No trades present in aggtrade, make sure trade aggregator is running.")
-#             raise
-#         symbol_prices[symbol] = float(list_trades[0][PRICE])
-#
-#     return
-
 def usdt_symbols_stream(type_of_trade: str) -> list:
     binance_symbols_price = requests.get("https://api.binance.com/api/v3/ticker/price").json()
 
@@ -180,3 +157,24 @@ def usdt_symbols_stream(type_of_trade: str) -> list:
 #             coin_ratio.update({current_symbol+USDT: symbol_info['market_cap'] / symbol_info['current_price']})
 #
 #     return coin_ratio
+
+
+# def get_timeframe():
+#     if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({DB_TS: {MongoDB.HIGHER_EQ: 0}})):
+#         return sp500_elements[-1][DB_TS]
+#
+#     return round_last_n_secs(get_current_second_in_ms(), ONE_MIN_IN_SECS)
+#
+#
+# def fill_symbol_prices(symbol_prices, end_ts):
+#     for symbol in symbol_prices.keys():
+#         list_trades = list(mongo.connect_to_bundled_aggtrade_db().get_collection(symbol).find(
+#             {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: end_ts - FIFTEEN_MIN_IN_MS}},
+#                            {DB_TS: {MongoDB.LOWER_EQ: end_ts}}]}))
+#
+#         if not list_trades:
+#             LOG.error("No trades present in aggtrade, make sure trade aggregator is running.")
+#             raise
+#         symbol_prices[symbol] = float(list_trades[0][PRICE])
+#
+#     return

@@ -1,16 +1,16 @@
 import time
-from vars_constants import millisecs_timeframe, ONE_MIN_IN_MS, default_parse_interval
-
+from vars_constants import MILLISECS_TIMEFRAME, ONE_MIN_IN_MS
+from data_func import ParseTradeData
+from MongoDB.db_actions import connect_to_parsed_aggtrade_db, query_parsed_aggtrade_multiple_timeframes
+from data_staging import current_milli_time
 
 # TODO: Fund trades are not parsed here..
 # TODO: don't forget coin_ratios
-def parse_trades_ten_seconds():
-    from data_func import ParseTradeData
-    from MongoDB.Queries import query_parsed_aggtrade_multiple_timeframes
-    from MongoDB.db_actions import connect_to_parsed_aggtrade_db, parsed_trades_base_db
-    from data_staging import current_milli_time
 
-    parse_aggtrade = ParseTradeData(millisecs_timeframe, parsed_trades_base_db.format(default_parse_interval))
+
+def parse_trades_ten_seconds():
+
+    parse_aggtrade = ParseTradeData()
 
     while any(parse_aggtrade.start_ts) < current_milli_time() - ONE_MIN_IN_MS:
         parse_aggtrade += query_parsed_aggtrade_multiple_timeframes(
@@ -27,7 +27,7 @@ def parse_trades_ten_seconds():
 
 
 
-        ts_begin += millisecs_timeframe
+        ts_begin += MILLISECS_TIMEFRAME
 
         print(time.time() - time1)
 

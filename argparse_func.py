@@ -4,7 +4,8 @@ from inspect import getmembers, isfunction
 import pkgutil
 import logging
 import logs
-from MongoDB.db_actions import list_database_names
+from MongoDB.db_actions import list_dbs
+import tasks
 
 PROGRAM_NAME = 'Algotrading-Crypto'
 fund_data = 'fund-data'
@@ -14,7 +15,6 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
 def algo_argparse():
-    import tasks
 
     parent_parser = argparse.ArgumentParser(
         prog=PROGRAM_NAME,
@@ -29,22 +29,18 @@ def algo_argparse():
     for element in pkgutil.iter_modules(tasks.__path__):
         subparser.add_parser(element.name.replace("_", "-"))
 
-    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO", choices=list_database_names())
+    subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-db-name", required=True, help="TODO", choices=list_dbs())
     subparser.choices[transform_trade_data].add_argument(f"--{transform_trade_data}-chart-minutes", type=int, required=True, help="TODO")
     return parent_parser.parse_args()
 
 
-def import_module_name(module_name):
-    __import__(module_name)
-
 def get_execute_function(parsed_args):
-    import tasks
 
     base_execute_module_name = parsed_args.command.replace("-", "_")
     for element in pkgutil.iter_modules(tasks.__path__):
         if base_execute_module_name == element.name:
             execute_module_path = f"{tasks.__name__}.{base_execute_module_name}"
-            import_module_name(execute_module_path)
+            __import__(execute_module_path)
 
             execute_module_functions = getmembers(getattr(tasks, base_execute_module_name), isfunction)
             execute_function = None
@@ -57,5 +53,9 @@ def get_execute_function(parsed_args):
                         LOG.error("Task modules need one and only one callable function instead of %s.", execute_function)
                         exit(1)
             else:
-                function_args = vars(parsed_args) if inspect.getfullargspec(execute_function).args else None
+                function_args = None
+
+                if inspect.getfullargspec(execute_function).args:
+                    function_args = {k: v for k, v in vars(parsed_args).items() if base_execute_module_name in k}
+
                 return execute_function, function_args

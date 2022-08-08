@@ -1,8 +1,13 @@
 ## Config variables, variables that can change how the program behaves are inserted here.
 
 AGGTRADE_PYCACHE = 1000
-millisecs_timeframe = 60 * 60 * 1000
-default_parse_interval = 10
+MILLISECS_TIMEFRAME = 60 * 60 * 1000
+DEFAULT_PARSE_INTERVAL = 10
+
+PARSED_TRADES_BASE_DB = "{}_seconds_parsed_trades"
+PARSED_AGGTRADES_DB = "parsed_aggtrades"
+AGGTRADES_DB = "aggtrades"
+
 SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT',
                             'DOGEUSDT',
                             'AVAXUSDT', 'SHIBUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
