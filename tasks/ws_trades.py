@@ -15,7 +15,7 @@ class QueueOverflow(Exception):
 async def execute_ws_trades():
 
     cache_symbols_parsed = CacheAggtrades()
-    async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_stream("@aggTrade")) as tscm:
+    async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_stream()) as tscm:
         while True:
             try:
                 ws_trade = await tscm.recv()

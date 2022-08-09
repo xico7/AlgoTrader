@@ -4,8 +4,8 @@ from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError
 
 import logs
-from data_staging import get_current_second_in_ms
-from vars_constants import DB_TS, MongoDB, DEFAULT_COL_SEARCH, PARSED_AGGTRADES_DB, AGGTRADES_DB
+from data_staging import get_current_second_in_ms, mins_to_ms, round_last_ten_secs
+from vars_constants import DB_TS, MongoDB, DEFAULT_COL_SEARCH, PARSED_AGGTRADES_DB, AGGTRADES_DB, DEFAULT_PARSE_INTERVAL
 
 trades_chart = '{}_trades_chart'
 localhost = 'localhost:27017/'
@@ -59,17 +59,6 @@ def insert_bundled_aggtrades(data) -> None:
     insert_many_db(AGGTRADES_DB, data, AGGTRADES_DB)
 
 
-def delete_all_text_dbs(text) -> None:
-    for db in list_dbs():
-        if text in db:
-            mongo_client.drop_database(db)
-
-
-def create_index_db_cols(db_name, field) -> None:
-    for col in list_db_cols(db_name):
-        query_db_collection(db_name, col).create_index([(field, -1)])
-
-
 def query_parsed_aggtrade(symbol, ts_begin, ts_end):
     return query_db_col_between(PARSED_AGGTRADES_DB, symbol, ts_begin, ts_end)
 
@@ -114,31 +103,32 @@ def query_starting_ts(db_name, collection, init_db=None):
     elif not init_db:
         values = None
     else:
-        values = query_db_col_oldest_ts(init_db, collection)
+        values = round_last_ten_secs(query_db_col_oldest_ts(init_db, collection))
 
     return values
 
 
-def query_existing_ws_trades(min_val, max_val, ms_parse_interval):
-    existing_trade_test_interval_in_ms = 3000000
+def query_existing_ws_trades(start_ts, end_ts, ms_parse_interval):
+    assume_existing_parse_interval = mins_to_ms(3)
     existing_trades = []
-    test_range = list(range(min_val, max_val, existing_trade_test_interval_in_ms))
 
-    for elem in test_range:
-        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, elem, elem + existing_trade_test_interval_in_ms):
-            existing_trades += list(range(elem, elem + existing_trade_test_interval_in_ms, ms_parse_interval))
-    else:
-        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, test_range[-1], max_val):
-            existing_trades += list(range(test_range[-1], max_val, ms_parse_interval))
+    for elem in list(range(min(list(start_ts.values())), max(list(end_ts.values())), assume_existing_parse_interval)):
+        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, elem, elem + assume_existing_parse_interval):
+            existing_trades += list(range(elem, elem + assume_existing_parse_interval, ms_parse_interval))
 
     return existing_trades
 
 
-# def query_db_col_oldest_ts(db_name, collection, round_secs=default_parse_interval, ts_filter=pymongo.ASCENDING):
-#     return round_last_n_secs(list(connect_to_db(db_name).get_collection(collection).find(
-#         {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: 0}},
-#                        {DB_TS: {MongoDB.LOWER_EQ: get_current_second_in_ms()}}]}).sort(
-#         DB_TS, ts_filter).limit(1))[0][DB_TS], round_secs)
+def delete_all_text_dbs(text) -> None:
+    for db in list_dbs():
+        if text in db:
+            mongo_client.drop_database(db)
+
+
+def create_index_db_cols(db_name, field) -> None:
+    for col in list_db_cols(db_name):
+        query_db_collection(db_name, col).create_index([(field, -1)])
+
 
  # def insert_many_to_db(db_name, data: dict) -> None:
  #    for symbol, chart_data in data.items():

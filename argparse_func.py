@@ -11,7 +11,10 @@ PROGRAM_NAME = 'Algotrading-Crypto'
 fund_data = 'fund-data'
 transform_trade_data = 'transform-trade-data'
 
-LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
+
+logs.setup_logs(
+    verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, logging.VERBOSE][:4 + 1][-1])
+LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
 
 
 def algo_argparse():

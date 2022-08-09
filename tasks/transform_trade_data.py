@@ -1,5 +1,5 @@
 import logging
-
+from datetime import datetime
 import logs
 from vars_constants import DB_TS, FIVE_SECS_IN_MS
 from MongoDB.db_actions import connect_to_db, trades_chart, query_starting_ts, query_db_col_between, insert_many_db
@@ -13,7 +13,7 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 def transform_trade_data(args):
 
-    LOG.info("Transforming data startfing from... asdasdsaas")
+
     finish_ts = get_current_second_in_ms()
     transform_db_name = args['transform_trade_data_db_name']
     price_volume_chart, cache = {}, 0
@@ -24,26 +24,24 @@ def transform_trade_data(args):
         end_ts[collection] = start_ts[collection] + mins_to_ms(args['transform_trade_data_chart_minutes']) + FIVE_SECS_IN_MS
         symbols_one_day_trades[collection] = query_db_col_between(transform_db_name, collection, start_ts[collection], end_ts[collection])
 
+    LOG.info(f"Transforming data starting from {datetime.fromtimestamp(min(start_ts.values()) / 1000)} to {datetime.fromtimestamp(max(end_ts.values())  / 1000)}")
+
     while max(list(end_ts.values())) < finish_ts:
         if cache == 0:
             for symbol in symbols_one_day_trades.keys():
                 symbols_append_trades[symbol] = query_db_col_between(transform_db_name, symbol, end_ts[symbol],
                                                                      end_ts[symbol] + 30 * 10000)
 
-        for symbol, symbol_values in symbols_one_day_trades.items():
-            max_value = max([symbol['price'] for symbol in symbol_values if symbol['price']])
-            min_value = min([symbol['price'] for symbol in symbol_values if symbol['price']])
-            price_range = ((max_value - min_value) * 100 / max_value)
-            most_recent_price = [trade['price'] for trade in symbol_values if trade['price']][-1]
-            price_volume_chart[symbol].append({"min": min_value,
-                                               "max": max_value,
-                                               'end_ts': symbols_one_day_trades[symbol][0][DB_TS],
-                                               'begin_ts': symbols_one_day_trades[symbol][-1][DB_TS],
-                                               'last_price': most_recent_price,
-                                               'range_percentage': price_range,
-                                               'total_volume': sum([trade['quantity'] for trade in symbol_values if trade['quantity']]),
-                                               'last_price_counter': get_counter(min_value, price_range, most_recent_price)})
-
+        for symbol, symbol_tf_values in symbols_one_day_trades.items():
+            tf_values = [tf['price'] for tf in symbol_tf_values if tf['price']]
+            max_tf_value = max(tf_values)
+            min_tf_value = min(tf_values)
+            price_range = ((max_tf_value - min_tf_value) * 100 / max_tf_value)
+            most_recent_price = tf_values[-1]
+            price_volume_chart.setdefault(symbol, []).append({
+                'min': min_tf_value, 'max': max_tf_value, 'end_ts': symbols_one_day_trades[symbol][0][DB_TS],
+                'begin_ts': symbols_one_day_trades[symbol][-1][DB_TS], 'last_price': most_recent_price,
+                'range_percentage': price_range, 'total_volume': sum(tf_values), 'last_price_counter': get_counter(min_tf_value, price_range, most_recent_price)})
 
         for symbol, symbol_values in symbols_one_day_trades.items():
             symbol_values.pop(0)

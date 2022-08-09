@@ -1,25 +1,15 @@
-from datetime import datetime
 import requests
 import re
 import time
 from typing import Union, List
-from vars_constants import SECONDS_TO_MS_APPEND, USDT
-
-
-class UntradedSymbol(Exception): pass
+from vars_constants import USDT, BNB, TEN_SECS_MS, coingecko_marketcap_api_link, SP500_SYMBOLS_USDT_PAIRS
 
 
 def remove_usdt(symbols: Union[List[str], str]):
     def match(symbol_or_symbols):
         return re.match('(^(.+?)USDT)', symbol_or_symbols).groups()[1].upper()
 
-    if isinstance(symbols, str):
-        try:
-            return match(symbols)
-        except AttributeError:
-            return None
-    else:
-        return [match(symbol) for symbol in symbols]
+    return match(symbols) if isinstance(symbols, str) else [match(symbol) for symbol in symbols]
 
 
 def get_current_second() -> int:
@@ -27,16 +17,7 @@ def get_current_second() -> int:
 
 
 def get_current_second_in_ms() -> float:
-    return sec_to_ms(get_current_second())
-
-
-def sec_to_ms(time_value):
-    time_value_str = str(time_value)
-    if '.' not in str(time_value):
-        return float(time_value_str + SECONDS_TO_MS_APPEND)
-    else:
-        split_decimal_tv = time_value_str.split('.')
-        return float(split_decimal_tv[0] + SECONDS_TO_MS_APPEND + '.' + split_decimal_tv[1])
+    return get_current_second() * 1000
 
 
 def mins_to_ms(minutes):
@@ -44,47 +25,22 @@ def mins_to_ms(minutes):
     return int(mins_in_ms) if isinstance(minutes, int) else mins_in_ms
 
 
-def ms_to_secs(time_value):
-    return time_value / 1000
-
-
-def get_last_minute(timestamp):
-    return round_last_n_secs(timestamp, 60)
-
-
-def get_last_second(timestamp):
-    round_last_n_secs(timestamp, 1)
-
-
-def sleep_until_time_match(fixed_timestamp):
-    if len(str(fixed_timestamp)) == 13:
-        time.sleep((fixed_timestamp - get_current_second_in_ms()) / 1000)
-    else:
-        time.sleep(fixed_timestamp - get_current_second())
-    return
-
-
-def round_last_n_secs(timestamp, number_of_seconds: int):
-    if len(str(timestamp)) == 13:
-        number_of_seconds = int(number_of_seconds * 1000)  # Convert to ms
-
-    return timestamp - int(str(timestamp)[-(len(str(number_of_seconds)) - 1):])
+def round_last_ten_secs(timestamp):
+    return timestamp - TEN_SECS_MS + (TEN_SECS_MS - (timestamp % TEN_SECS_MS))
 
 
 def current_milli_time():
     return round(time.time() * 1000)
 
-def is_new_minute(current_minute, current_time):
-    if len(str(current_time)) == 13:
-        if get_last_minute(current_time) != current_minute:
-            return True
-    if get_last_minute(current_time) != current_minute:
-        return True
 
-#
-# def coin_ratio():
-#     return get_symbols_normalized_fund_ratio(remove_usdt(SP500_SYMBOLS_USDT_PAIRS), requests.get(coingecko_marketcap_api_link).json())
-#
+def coin_ratio():
+    total_marketcap = 0
+    SP500_SYMBOLS = remove_usdt(SP500_SYMBOLS_USDT_PAIRS)
+    for symbol in requests.get(coingecko_marketcap_api_link).json():
+        if symbol in SP500_SYMBOLS:
+            total_marketcap += symbol['market_cap']
+
+
 
 def sum_values(key_values):
     total = 0
@@ -105,76 +61,18 @@ def transform_data(data, *keys):
     return data_keys
 
 
+def usdt_with_bnb_symbols_stream() -> list:
+    all_symbols = [symbol_data['symbol'] for symbol_data in requests.get("https://api.binance.com/api/v3/ticker/price").json()]
+    usdt_symbols = [symbol for symbol in all_symbols if USDT in symbol]
 
-
-# TODO: isto não está a fazer nada.. lol
-def usdt_with_bnb_symbols_stream(type_of_trade: str) -> list:
-    symbols = usdt_symbols_stream(type_of_trade)
-    bnb_symbols = []
-    for symbol in symbols:
-        bnb_suffix_elem_search = symbol.replace(USDT, "BNB")
-        bnb_prefix_elem_search = "BNB" + symbol.replace(USDT, "")
-        if bnb_suffix_elem_search in symbol or bnb_prefix_elem_search in symbol:
-            bnb_symbols.append(symbol)
-
-    return bnb_symbols
-
-
-
+    return [symbol for symbol in usdt_symbols
+            if symbol.replace(USDT, BNB) in all_symbols or BNB + symbol.replace(USDT, '') in all_symbols]
 
 
 def get_counter(min_value, range, price):
     counter = 0
-    difference = price - min_value
-    while difference > 0:
+    while difference := price - min_value:
         difference -= range
         counter += 1
 
     return str(counter)
-
-
-def usdt_symbols_stream(type_of_trade: str) -> list:
-    binance_symbols_price = requests.get("https://api.binance.com/api/v3/ticker/price").json()
-
-    binance_symbols = []
-    for symbol_info in binance_symbols_price:
-        symbol = symbol_info["symbol"]
-        if USDT in symbol:
-            binance_symbols.append(symbol)
-
-    return [f"{symbol.lower()}{type_of_trade}" for symbol in binance_symbols]
-#
-# def get_symbols_normalized_fund_ratio(symbol_pairs: dict, symbols_information: dict):
-#     coin_ratio = {}
-#     total_marketcap = 0
-#     for symbol_info in symbols_information:
-#         if symbol_info[SYMBOL].upper() in symbol_pairs:
-#             total_marketcap += symbol_info['market_cap']
-#
-#     for symbol_info in symbols_information:
-#         current_symbol = symbol_info[SYMBOL].upper()
-#         if current_symbol in symbol_pairs:
-#             coin_ratio.update({current_symbol+USDT: symbol_info['market_cap'] / symbol_info['current_price']})
-#
-#     return coin_ratio
-
-
-# def get_timeframe():
-#     if sp500_elements := list(mongo.connect_to_sp500_db_collection().find({DB_TS: {MongoDB.HIGHER_EQ: 0}})):
-#         return sp500_elements[-1][DB_TS]
-#
-#     return round_last_n_secs(get_current_second_in_ms(), ONE_MIN_IN_SECS)
-#
-#
-# def fill_symbol_prices(symbol_prices, end_ts):
-#     for symbol in symbol_prices.keys():
-#         list_trades = list(mongo.connect_to_bundled_aggtrade_db().get_collection(symbol).find(
-#             {MongoDB.AND: [{DB_TS: {MongoDB.HIGHER_EQ: end_ts - FIFTEEN_MIN_IN_MS}},
-#                            {DB_TS: {MongoDB.LOWER_EQ: end_ts}}]}))
-#
-#         if not list_trades:
-#             LOG.error("No trades present in aggtrade, make sure trade aggregator is running.")
-#             raise
-#         symbol_prices[symbol] = float(list_trades[0][PRICE])
-#
-#     return

@@ -1,10 +1,10 @@
 from support.decorators_extenders import init_only_existing
-from vars_constants import PRICE, QUANTITY, SYMBOL, DB_TS, DEFAULT_PARSE_INTERVAL, MILLISECS_TIMEFRAME, \
+from vars_constants import PRICE, QUANTITY, SYMBOL, DB_TS, DEFAULT_PARSE_INTERVAL, ONE_HOUR_IN_MS, \
     PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB
 from dataclasses import dataclass
 from MongoDB.db_actions import insert_bundled_aggtrades, insert_parsed_aggtrades, \
     connect_to_parsed_aggtrade_db, insert_many_db, query_starting_ts, query_existing_ws_trades
-from data_staging import round_last_n_secs, current_milli_time
+from data_staging import round_last_ten_secs, current_milli_time
 
 
 class CacheAggtrades(dict):
@@ -49,10 +49,11 @@ class Aggtrade:
         return args, kwargs
 
 
-class ParseTradeData:
-    def __init__(self, timeframe_in_ms=MILLISECS_TIMEFRAME, db_name=PARSED_TRADES_BASE_DB, parse_interval_in_secs=DEFAULT_PARSE_INTERVAL, symbols=connect_to_parsed_aggtrade_db().list_collection_names()):
+class SymbolsTimeframeTrade:
+    def __init__(self, timeframe_in_ms=ONE_HOUR_IN_MS, db_name=PARSED_TRADES_BASE_DB, parse_interval_in_secs=DEFAULT_PARSE_INTERVAL, symbols=connect_to_parsed_aggtrade_db().list_collection_names()):
         self.ms_parse_interval = parse_interval_in_secs * 1000
         self.end_ts, self.start_ts, self.ts_data = {}, {}, {}
+
         self._symbols = symbols
         self.db_name = db_name.format(parse_interval_in_secs)
         self.timeframe = timeframe_in_ms
@@ -61,7 +62,7 @@ class ParseTradeData:
     def __iadd__(self, trades):
         for symbol, symbol_trades in trades.items():
             for trade in symbol_trades:
-                trade_tf_data = self.ts_data[symbol][round_last_n_secs(trade[DB_TS], self.ms_parse_interval / 1000)]
+                trade_tf_data = self.ts_data[symbol][round_last_ten_secs(trade[DB_TS])]
 
                 try:
                     trade_tf_data[PRICE] += (trade[PRICE] - trade_tf_data[PRICE]) * trade[QUANTITY] / \
@@ -78,9 +79,7 @@ class ParseTradeData:
                 possible_timeframe = self.start_ts[symbol] + self.timeframe - 1
                 self.end_ts[symbol] = possible_timeframe if possible_timeframe < current_milli_time() else current_milli_time()
 
-        existing_trades = query_existing_ws_trades(min(list(self.start_ts.values())),
-                                                   max(list(self.end_ts.values())),
-                                                   self.ms_parse_interval)
+        existing_trades = query_existing_ws_trades(self.start_ts, self.end_ts, self.ms_parse_interval)
 
         for symbol in self._symbols:
             self.ts_data[symbol] = {}
@@ -97,3 +96,11 @@ class ParseTradeData:
             self.start_ts[symbol] += self.timeframe
             self.end_ts[symbol] += self.timeframe
         self.init_price_volume(self.start_ts, self.end_ts)
+
+
+class FundTimeframeTrade:
+    def __init__(self, symbols_tf_trades: SymbolsTimeframeTrade):
+        from vars_constants import SP500_SYMBOLS_USDT_PAIRS
+        from data_staging import coin_ratio
+        b = coin_ratio()
+        a = 2
