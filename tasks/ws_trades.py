@@ -1,8 +1,9 @@
+
 from binance import AsyncClient, BinanceSocketManager
 from data_func import Aggtrade, CacheAggtrades
 from support.helper_func import output_error
 from vars_constants import AGGTRADE_PYCACHE
-from data_staging import usdt_with_bnb_symbols_stream
+from data_staging import usdt_with_bnb_symbols_stream, lower_add_aggtrade
 
 
 # TODO: implement coingecko verification symbols for marketcap, how?
@@ -13,9 +14,9 @@ class QueueOverflow(Exception):
 
 
 async def execute_ws_trades():
-
     cache_symbols_parsed = CacheAggtrades()
-    async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_stream()) as tscm:
+
+    async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(lower_add_aggtrade(usdt_with_bnb_symbols_stream())) as tscm:
         while True:
             try:
                 ws_trade = await tscm.recv()

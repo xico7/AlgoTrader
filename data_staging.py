@@ -69,6 +69,10 @@ def usdt_with_bnb_symbols_stream() -> list:
             if symbol.replace(USDT, BNB) in all_symbols or BNB + symbol.replace(USDT, '') in all_symbols]
 
 
+def lower_add_aggtrade(symbols: list):
+    return [symbol.lower() + '@aggTrade' for symbol in symbols]
+
+
 def get_counter(min_value, range, price):
     counter = 0
     while difference := price - min_value:
