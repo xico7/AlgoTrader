@@ -99,8 +99,9 @@ class SymbolsTimeframeTrade:
 
 
 class FundTimeframeTrade:
+    # TODO: O price é o marketcap das '37' moedas.. a quantidade é o volume..
     def __init__(self, symbols_tf_trades: SymbolsTimeframeTrade):
-        from vars_constants import SP500_SYMBOLS_USDT_PAIRS
-        from data_staging import coin_ratio
-        b = coin_ratio()
-        a = 2
+        from data_staging import coin_ratio_marketcap
+        ratios, fund_marketcap = coin_ratio_marketcap()
+        for btc_timeframe in symbols_tf_trades.ts_data['BTCUSDT']:
+            pass #if btc_timeframe

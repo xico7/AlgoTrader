@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import requests
 import re
 import time
@@ -6,10 +8,7 @@ from vars_constants import USDT, BNB, TEN_SECS_MS, coingecko_marketcap_api_link,
 
 
 def remove_usdt(symbols: Union[List[str], str]):
-    def match(symbol_or_symbols):
-        return re.match('(^(.+?)USDT)', symbol_or_symbols).groups()[1].upper()
-
-    return match(symbols) if isinstance(symbols, str) else [match(symbol) for symbol in symbols]
+    return [re.match('(^(.+?)USDT)', symbol).groups()[1].lower() for symbol in symbols]
 
 
 def get_current_second() -> int:
@@ -33,21 +32,22 @@ def current_milli_time():
     return round(time.time() * 1000)
 
 
-def coin_ratio():
-    total_marketcap = 0
-    SP500_SYMBOLS = remove_usdt(SP500_SYMBOLS_USDT_PAIRS)
-    for symbol in requests.get(coingecko_marketcap_api_link).json():
-        if symbol in SP500_SYMBOLS:
-            total_marketcap += symbol['market_cap']
+def coin_ratio_marketcap():
+    fund_marketcap = 0
+    symbols_price_weight_marketcap, coin_ratio = {}, {}
+    sp500_symbols = {symbol: re.match('(^(.+?)USDT)', symbol).groups()[1].lower() for symbol in SP500_SYMBOLS_USDT_PAIRS}
+    for symbol_data in requests.get(coingecko_marketcap_api_link).json():
+        try:
+            symbol_key = [k for k, symbol in sp500_symbols.items() if symbol == symbol_data['symbol']][0]
+        except IndexError:
+            continue
+        symbols_price_weight_marketcap[symbol_key] = {"price": symbol_data['current_price'],
+                                                      "price_weight": symbol_data['market_cap'] / symbol_data['current_price'],
+                                                      "marketcap": symbol_data['market_cap']}
 
+        fund_marketcap += symbol_data['market_cap']
 
-
-def sum_values(key_values):
-    total = 0
-    for value in key_values.values():
-        total += value
-
-    return total
+    return symbols_price_weight_marketcap, fund_marketcap
 
 
 def transform_data(data, *keys):

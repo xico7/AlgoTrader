@@ -5,7 +5,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 
 import logs
 from data_staging import get_current_second_in_ms, mins_to_ms, round_last_ten_secs
-from vars_constants import DB_TS, MongoDB, DEFAULT_COL_SEARCH, PARSED_AGGTRADES_DB, AGGTRADES_DB, DEFAULT_PARSE_INTERVAL
+from vars_constants import DB_TS, MongoDB, DEFAULT_COL_SEARCH, PARSED_AGGTRADES_DB, AGGTRADES_DB
 
 trades_chart = '{}_trades_chart'
 localhost = 'localhost:27017/'
@@ -32,16 +32,27 @@ except ServerSelectionTimeoutError as e:
         LOG.exception("Unexpected error while trying to connect to MongoDB.")
         raise
 
+
 def list_dbs():
     return list(mongo_client.list_database_names())
+
+
 def list_db_cols(db_name):
     return connect_to_db(db_name).list_collection_names()
+
+
 def query_db_collection(db_name, col):
     return connect_to_db(db_name).get_collection(col)
+
+
 def connect_to_bundled_aggtrade_db():
     return connect_to_db(AGGTRADES_DB)
+
+
 def connect_to_parsed_aggtrade_db():
     return connect_to_db(PARSED_AGGTRADES_DB)
+
+
 def connect_to_db(db_name):
     return mongo_client_db(db_name).get_default_database()
 
@@ -124,6 +135,7 @@ def delete_all_text_dbs(text) -> None:
         if text in db:
             mongo_client.drop_database(db)
 
+#delete_all_text_dbs("symb")
 
 def create_index_db_cols(db_name, field) -> None:
     for col in list_db_cols(db_name):
