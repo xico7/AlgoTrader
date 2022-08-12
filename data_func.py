@@ -2,8 +2,8 @@ from support.decorators_extenders import init_only_existing
 from vars_constants import PRICE, QUANTITY, SYMBOL, DB_TS, DEFAULT_PARSE_INTERVAL, ONE_HOUR_IN_MS, \
     PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB
 from dataclasses import dataclass
-from MongoDB.db_actions import insert_bundled_aggtrades, insert_parsed_aggtrades, \
-    connect_to_parsed_aggtrade_db, insert_many_db, query_starting_ts, query_existing_ws_trades
+from MongoDB.db_actions import insert_bundled_aggtrades, insert_parsed_aggtrades, connect_to_parsed_aggtrade_db, \
+    insert_many_db, query_starting_ts, query_existing_ws_trades
 from data_staging import round_last_ten_secs, current_milli_time
 
 
@@ -50,19 +50,27 @@ class Aggtrade:
 
 
 class SymbolsTimeframeTrade:
+
     def __init__(self, timeframe_in_ms=ONE_HOUR_IN_MS, db_name=PARSED_TRADES_BASE_DB, parse_interval_in_secs=DEFAULT_PARSE_INTERVAL, symbols=connect_to_parsed_aggtrade_db().list_collection_names()):
         self.ms_parse_interval = parse_interval_in_secs * 1000
-        self.end_ts, self.start_ts, self.ts_data = {}, {}, {}
-
+        self.end_ts = {}
+        self.start_ts = {}
+        self.ts_data = {}
+        self.start_price = {}
+        self.end_price = {}
         self._symbols = symbols
         self.db_name = db_name.format(parse_interval_in_secs)
         self.timeframe = timeframe_in_ms
-        self.init_price_volume()
+        self.init_data()
 
     def __iadd__(self, trades):
         for symbol, symbol_trades in trades.items():
             for trade in symbol_trades:
                 trade_tf_data = self.ts_data[symbol][round_last_ten_secs(trade[DB_TS])]
+                if t := trade[PRICE]:
+                    self.end_price[symbol] = t
+                    if not self.start_price[symbol]:
+                        self.start_price[symbol] = t
 
                 try:
                     trade_tf_data[PRICE] += (trade[PRICE] - trade_tf_data[PRICE]) * trade[QUANTITY] / \
@@ -72,7 +80,7 @@ class SymbolsTimeframeTrade:
                     trade_tf_data[PRICE], trade_tf_data[QUANTITY] = trade[PRICE], trade[QUANTITY]
         return self
 
-    def init_price_volume(self, start_ts=None, end_ts=None):
+    def init_data(self, start_ts=None, end_ts=None):
         if not (start_ts and end_ts):
             for symbol in self._symbols:
                 self.start_ts[symbol] = query_starting_ts(self.db_name, symbol, init_db=PARSED_AGGTRADES_DB)
@@ -83,8 +91,11 @@ class SymbolsTimeframeTrade:
 
         for symbol in self._symbols:
             self.ts_data[symbol] = {}
+            self.start_price[symbol] = None
+            self.end_price[symbol] = None
             for ts in range(self.start_ts[symbol], self.end_ts[symbol], self.ms_parse_interval):
                 self.ts_data[symbol][ts] = {PRICE: 0, QUANTITY: 0} if ts in existing_trades else {PRICE: None, QUANTITY: None}
+
 
     def insert_in_db(self):
         for symbol, symbol_ts_data in self.ts_data.items():
@@ -95,13 +106,16 @@ class SymbolsTimeframeTrade:
         for symbol in self._symbols:
             self.start_ts[symbol] += self.timeframe
             self.end_ts[symbol] += self.timeframe
-        self.init_price_volume(self.start_ts, self.end_ts)
+        self.init_data(self.start_ts, self.end_ts)
 
 
 class FundTimeframeTrade:
-    # TODO: O price é o marketcap das '37' moedas.. a quantidade é o volume..
-    def __init__(self, symbols_tf_trades: SymbolsTimeframeTrade):
+    def __init__(self):
         from data_staging import coin_ratio_marketcap
+        from vars_constants import SP500_SYMBOLS_USDT_PAIRS
         ratios, fund_marketcap = coin_ratio_marketcap()
-        for btc_timeframe in symbols_tf_trades.ts_data['BTCUSDT']:
-            pass #if btc_timeframe
+        for symbol in SP500_SYMBOLS_USDT_PAIRS:
+            query_starting_ts(PARSED_TRADES_BASE_DB, symbol)
+            pass
+            #     range(symbols_tf_trades.start_ts['BTCUSDT'], symbols_tf_trades.end_ts['BTCUSDT'], symbols_tf_trades.ms_parse_interval)
+            # pass #if btc_timeframe

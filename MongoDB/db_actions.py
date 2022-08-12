@@ -13,6 +13,8 @@ base_mongo_conn_string = 'mongodb://localhost:27017/'
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
+class EmptyInitDB(Exception): pass
+
 
 def mongo_client_db(db_name: str):
     return MongoClient(f'{base_mongo_conn_string}{db_name}')
@@ -88,7 +90,7 @@ def query_parsed_aggtrade_multiple_timeframes(symbols: list, ts_begin, ts_end):
     return {symbol: query_parsed_aggtrade(symbol, ts_begin[symbol], ts_end[symbol]) for symbol in symbols}
 
 
-def query_db_col_earliest_oldest_ts(db_name, collection, earliest=True):
+def query_db_col_earliest_oldest_ts(db_name, collection, earliest=True, init_db=False):
     if values := query_all_dbcol_values(db_name, collection):
         values = sorted(values, key=itemgetter(DB_TS))
         first_value_ts, last_value_ts = values[0][DB_TS], values[-1][DB_TS]
@@ -97,11 +99,15 @@ def query_db_col_earliest_oldest_ts(db_name, collection, earliest=True):
             return first_value_ts if first_value_ts > last_value_ts else last_value_ts
         else:
             return first_value_ts if first_value_ts < last_value_ts else last_value_ts
+
+    if init_db:
+        raise EmptyInitDB("Empty init db detected.")
+
     return None
 
 
-def query_db_col_oldest_ts(db_name, collection):
-    return query_db_col_earliest_oldest_ts(db_name, collection, earliest=False)
+def query_db_col_oldest_ts(db_name, collection, init_db=False):
+    return query_db_col_earliest_oldest_ts(db_name, collection, earliest=False, init_db=init_db)
 
 
 def query_db_col_earliest(db_name, collection):
@@ -114,7 +120,7 @@ def query_starting_ts(db_name, collection, init_db=None):
     elif not init_db:
         values = None
     else:
-        values = round_last_ten_secs(query_db_col_oldest_ts(init_db, collection))
+        values = round_last_ten_secs(query_db_col_oldest_ts(init_db, collection, init_db=True))
 
     return values
 

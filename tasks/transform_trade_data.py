@@ -13,15 +13,14 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 def transform_trade_data(args):
 
-
     finish_ts = get_current_second_in_ms()
-    transform_db_name = args['transform_trade_data_db_name']
+    transform_db_name = args['db_name']
     price_volume_chart, cache = {}, 0
 
     symbols_one_day_trades, symbols_append_trades, start_ts, end_ts, ts_data = {}, {}, {}, {}, {}
     for collection in connect_to_db(transform_db_name).list_collection_names():
-        start_ts[collection] = query_starting_ts(trades_chart.format(args['transform_trade_data_chart_minutes']), collection, init_db=transform_db_name)
-        end_ts[collection] = start_ts[collection] + mins_to_ms(args['transform_trade_data_chart_minutes']) + FIVE_SECS_IN_MS
+        start_ts[collection] = query_starting_ts(trades_chart.format(args['chart_minutes']), collection, init_db=transform_db_name)
+        end_ts[collection] = start_ts[collection] + mins_to_ms(args['chart_minutes']) + FIVE_SECS_IN_MS
         symbols_one_day_trades[collection] = query_db_col_between(transform_db_name, collection, start_ts[collection], end_ts[collection])
 
     LOG.info(f"Transforming data starting from {datetime.fromtimestamp(min(start_ts.values()) / 1000)} to {datetime.fromtimestamp(max(end_ts.values())  / 1000)}")
@@ -50,10 +49,11 @@ def transform_trade_data(args):
 
         cache += 1
         if cache == 30:
-            insert_many_db(trades_chart.format(args['transform_trade_data_chart_minutes']), price_volume_chart)
+            insert_many_db(trades_chart.format(args['chart_minutes']), price_volume_chart)
             price_volume_chart = []
             cache = 0
 
 
     print("success.")
     exit(0)
+
