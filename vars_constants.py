@@ -10,14 +10,14 @@ AGGTRADES_DB = "aggtrades"
 
 SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT',
                             'DOGEUSDT',
-                            'AVAXUSDT', 'SHIBUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
+                            'AVAXUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
                             'BCHUSDT',
                             'ALGOUSDT',
                             'MANAUSDT', 'XLMUSDT', 'AXSUSDT', 'VETUSDT', 'FTTUSDT', 'EGLDUSDT', 'ATOMUSDT',
                             'ICPUSDT',
                             'FILUSDT',
                             'HBARUSDT', 'SANDUSDT', 'THETAUSDT', 'FTMUSDT',
-                            'NEARUSDT', 'XMRUSDT', 'KLAYUSDT', 'GALAUSDT', 'HNTUSDT', 'GRTUSDT',
+                            'NEARUSDT', 'XMRUSDT', 'KLAYUSDT', 'GALAUSDT',
                             'LRCUSDT']
 
 

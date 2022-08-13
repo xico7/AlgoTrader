@@ -66,7 +66,9 @@ def usdt_with_bnb_symbols_stream() -> list:
     usdt_symbols = [symbol for symbol in all_symbols if USDT in symbol]
 
     return [symbol for symbol in usdt_symbols
-            if symbol.replace(USDT, BNB) in all_symbols or BNB + symbol.replace(USDT, '') in all_symbols]
+            if symbol.replace(USDT, BNB) in all_symbols
+            or BNB + symbol.replace(USDT, '') in all_symbols
+            or symbol == 'BNBUSDT']
 
 
 def lower_add_aggtrade(symbols: list):

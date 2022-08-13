@@ -14,6 +14,7 @@ base_mongo_conn_string = 'mongodb://localhost:27017/'
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 class EmptyInitDB(Exception): pass
+class InvalidDataProvided(Exception): pass
 
 
 def mongo_client_db(db_name: str):
@@ -118,7 +119,8 @@ def query_starting_ts(db_name, collection, init_db=None):
     if values := query_db_col_earliest(db_name, collection):
         pass
     elif not init_db:
-        values = None
+        raise InvalidDataProvided(f"symbol '{collection}' doesn't have a valid timestamp in db "
+                                  f"'{db_name}' and no other db to initialize from.")
     else:
         values = round_last_ten_secs(query_db_col_oldest_ts(init_db, collection, init_db=True))
 

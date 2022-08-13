@@ -1,6 +1,6 @@
 import argparse
 import inspect
-from inspect import getmembers, isfunction
+from inspect import isfunction
 import pkgutil
 import logging
 import logs
@@ -39,18 +39,16 @@ def algo_argparse():
 def get_execute_functions(parsed_args):
 
     base_execute_module_name = parsed_args['command'].replace("-", "_")
-    for element in pkgutil.iter_modules(tasks.__path__):
-        if base_execute_module_name == element.name:
+    for task in pkgutil.iter_modules(tasks.__path__):
+        if base_execute_module_name == task.name:
             execute_module_path = f"{tasks.__name__}.{base_execute_module_name}"
-            __import__(execute_module_path)
 
-            execute_module_functions = getmembers(getattr(tasks, base_execute_module_name), isfunction)
+            module_objects = vars(getattr(__import__(execute_module_path), base_execute_module_name))
+            execute_module_functions = [obj for obj in module_objects.values() if
+                                        isfunction(obj) and obj.__module__ == execute_module_path]
             execute_functions = {}
 
-            for _, function in execute_module_functions:
-                if function.__module__ == execute_module_path:
-                    execute_functions[function] = parsed_args if inspect.getfullargspec(function).args else None
-                else:
-                    pass
+            for function in execute_module_functions:
+                execute_functions[function] = parsed_args if inspect.getfullargspec(function).args else None
 
             return execute_functions

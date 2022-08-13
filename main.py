@@ -13,7 +13,7 @@ async def async_main(func, args):
 
 
 def main():
-    for function, function_args in argp.get_execute_functions(vars(argp.algo_argparse())):
+    for function, function_args in argp.get_execute_functions(vars(argp.algo_argparse())).items():
         if inspect.iscoroutinefunction(function):
             asyncio.run(async_main(function, function_args))
         elif function_args:
