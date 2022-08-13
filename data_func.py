@@ -1,11 +1,11 @@
 from typing import Optional
 
 from support.decorators_extenders import init_only_existing
-from vars_constants import PRICE, QUANTITY, SYMBOL, DB_TS, DEFAULT_PARSE_INTERVAL, ONE_HOUR_IN_MS, \
-    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB
+from vars_constants import PRICE, QUANTITY, SYMBOL, TS, DEFAULT_PARSE_INTERVAL, ONE_HOUR_IN_MS, \
+    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, FUND_DB, MARKETCAP
 from dataclasses import dataclass
 from MongoDB.db_actions import insert_bundled_aggtrades, insert_parsed_aggtrades, connect_to_parsed_aggtrade_db, \
-    insert_many_db, query_starting_ts, query_existing_ws_trades
+    insert_many_db, query_starting_ts, query_existing_ws_trades, insert_many_db_same_col_name
 from data_staging import round_last_ten_secs, current_milli_time
 
 
@@ -47,13 +47,14 @@ class Aggtrade:
 
     def _pre_init__(self, *args, **kwargs):
         kwargs[SYMBOL] = kwargs['s']
-        kwargs[DB_TS] = int(kwargs['E'])
+        kwargs[TS] = int(kwargs['E'])
         kwargs[PRICE] = float(kwargs['p'])
         kwargs[QUANTITY] = float(kwargs['q'])
 
         return args, kwargs
 
 
+# TODO: Improve this part..
 class Trade:
 
     def __init__(self, symbols=None, timeframe_in_ms=None, parse_interval_in_secs=None, copy_trade=None):
@@ -86,7 +87,7 @@ class SymbolsTimeframeTrade(Trade):
     def __iadd__(self, trades):
         for symbol, symbol_trades in trades.items():
             for trade in symbol_trades:
-                trade_tf_data = self.ts_data[symbol][round_last_ten_secs(trade[DB_TS])]
+                trade_tf_data = self.ts_data[symbol][round_last_ten_secs(trade[TS])]
                 if t := trade[PRICE]:
                     self.end_price[symbol] = t
                     if not self.start_price[symbol]:
@@ -100,6 +101,7 @@ class SymbolsTimeframeTrade(Trade):
                     trade_tf_data[PRICE], trade_tf_data[QUANTITY] = trade[PRICE], trade[QUANTITY]
         return self
 
+# TODO: Heisenbug here.. sometimes self.start_ts[symbol] is a dict.
     def _init_end_ts(self, symbol, end_ts):
         possible_timeframe = self.start_ts[symbol] + self.timeframe - 1
         if end_ts:
@@ -123,8 +125,8 @@ class SymbolsTimeframeTrade(Trade):
         for symbol in self._symbols:
             self.ts_data[symbol] = {}
 
-            for ts in range(self.start_ts[symbol], self.end_ts[symbol], self.ms_parse_interval):
-                self.ts_data[symbol][ts] = {PRICE: 0, QUANTITY: 0} if ts in existing_trades else {PRICE: None, QUANTITY: None}
+            for tf in range(self.start_ts[symbol], self.end_ts[symbol], self.ms_parse_interval):
+                self.ts_data[symbol][tf] = {PRICE: 0, QUANTITY: 0} if tf in existing_trades else {PRICE: None, QUANTITY: None}
 
     def _init_start_end_price(self):
         for symbol in self._symbols:
@@ -142,7 +144,7 @@ class SymbolsTimeframeTrade(Trade):
     def insert_in_db(self):
         for symbol, symbol_ts_data in self.ts_data.items():
             insert_many_db(self.db_name,
-                           [{DB_TS: timeframe, **symbol_ts_data[timeframe]} for timeframe in symbol_ts_data], symbol)
+                           [{TS: timeframe, **symbol_ts_data[timeframe]} for timeframe in symbol_ts_data], symbol)
 
     def reset_add_interval(self):
         for symbol in self._symbols:
@@ -152,23 +154,38 @@ class SymbolsTimeframeTrade(Trade):
 
 
 class FundTimeframeTrade(Trade):
-    def __init__(self):
+    def __init__(self, start_ts=None):
         from data_staging import coin_ratio_marketcap
         from vars_constants import SP500_SYMBOLS_USDT_PAIRS
         from MongoDB.db_actions import query_parsed_aggtrade_multiple_timeframes
 
-        start_ts = 0
-        for symbol in SP500_SYMBOLS_USDT_PAIRS:
-            ts = query_starting_ts(PARSED_TRADES_BASE_DB.format(DEFAULT_PARSE_INTERVAL), symbol)
-            if ts > start_ts:
-                start_ts = ts
+        if not start_ts:
+            start_ts = 0
+            for symbol in SP500_SYMBOLS_USDT_PAIRS:
+                ts = query_starting_ts(PARSED_TRADES_BASE_DB.format(DEFAULT_PARSE_INTERVAL), symbol)
+                if ts > start_ts:
+                    start_ts = ts
 
         parse_tf_trades = SymbolsTimeframeTrade(symbols=SP500_SYMBOLS_USDT_PAIRS, start_ts=start_ts)
         parse_tf_trades += query_parsed_aggtrade_multiple_timeframes(
             SP500_SYMBOLS_USDT_PAIRS, parse_tf_trades.start_ts, parse_tf_trades.end_ts)
 
         super().__init__(copy_trade=parse_tf_trades)
+        self.db_col_name = FUND_DB
+        self.ratios, self.fund_marketcap = coin_ratio_marketcap()
+        self.tf_marketcap_quantity = {}
+        for tf in range(self.start_ts[DEFAULT_SYMBOL_SEARCH], self.end_ts[DEFAULT_SYMBOL_SEARCH], self.ms_parse_interval):
+            self.tf_marketcap_quantity[tf] = {MARKETCAP: 0, QUANTITY: 0}
 
-        ratios, fund_marketcap = coin_ratio_marketcap()
-        self.ratios = ratios
-        self.fund_marketcap = fund_marketcap
+    def insert_in_db(self):
+        tf_marketcap_quantity_as_list = []
+
+        for tf, marketcap_quantity in self.tf_marketcap_quantity.items():
+            tf_marketcap_quantity_as_list.append({TS: tf,
+                                                  MARKETCAP: marketcap_quantity[MARKETCAP],
+                                                  QUANTITY: marketcap_quantity[QUANTITY]})
+
+        insert_many_db_same_col_name(self.db_col_name, tf_marketcap_quantity_as_list)
+
+    def reset_add_interval(self):
+        pass

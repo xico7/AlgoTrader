@@ -4,21 +4,15 @@ AGGTRADE_PYCACHE = 1000
 ONE_HOUR_IN_MS = 60 * 60 * 1000
 DEFAULT_PARSE_INTERVAL = 10
 
+FUND_DB = "10_seconds_fund_data"
 PARSED_TRADES_BASE_DB = "{}_seconds_parsed_trades"
 PARSED_AGGTRADES_DB = "parsed_aggtrades"
 AGGTRADES_DB = "aggtrades"
 
 SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT',
                             'DOGEUSDT',
-                            'AVAXUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'TRXUSDT',
-                            'BCHUSDT',
-                            'ALGOUSDT',
-                            'MANAUSDT', 'XLMUSDT', 'AXSUSDT', 'VETUSDT', 'FTTUSDT', 'EGLDUSDT', 'ATOMUSDT',
-                            'ICPUSDT',
-                            'FILUSDT',
-                            'HBARUSDT', 'SANDUSDT', 'THETAUSDT', 'FTMUSDT',
-                            'NEARUSDT', 'XMRUSDT', 'KLAYUSDT', 'GALAUSDT',
-                            'LRCUSDT']
+                            'AVAXUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT',
+                            'ALGOUSDT']
 
 
 ## Program constants, variables that contain 'static' values that are used in one or more modules.
@@ -27,10 +21,12 @@ SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT
 coingecko_marketcap_api_link = "https://api.coingecko.com/api/v3/coins/" \
                                "markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false"
 SYMBOL = 'symbol'
-DEFAULT_COL_SEARCH = "BTCUSDT"
-DB_TS = "timestamp"
+DEFAULT_SYMBOL_SEARCH = "BTCUSDT"
+MARKETCAP = 'marketcap'
+TS = "timestamp"
 PRICE = "price"
 QUANTITY = 'quantity'
+
 
 class MongoDB:
     EQUAL = '$eq'

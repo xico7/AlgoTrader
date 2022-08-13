@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 import logs
-from vars_constants import DB_TS, FIVE_SECS_IN_MS
+from vars_constants import TS, FIVE_SECS_IN_MS
 from MongoDB.db_actions import connect_to_db, trades_chart, query_starting_ts, query_db_col_between, insert_many_db
 from data_staging import get_counter, get_current_second_in_ms, mins_to_ms
 
@@ -38,8 +38,8 @@ def transform_trade_data(args):
             price_range = ((max_tf_value - min_tf_value) * 100 / max_tf_value)
             most_recent_price = tf_values[-1]
             price_volume_chart.setdefault(symbol, []).append({
-                'min': min_tf_value, 'max': max_tf_value, 'end_ts': symbols_one_day_trades[symbol][0][DB_TS],
-                'begin_ts': symbols_one_day_trades[symbol][-1][DB_TS], 'last_price': most_recent_price,
+                'min': min_tf_value, 'max': max_tf_value, 'end_ts': symbols_one_day_trades[symbol][0][TS],
+                'begin_ts': symbols_one_day_trades[symbol][-1][TS], 'last_price': most_recent_price,
                 'range_percentage': price_range, 'total_volume': sum(tf_values), 'last_price_counter': get_counter(min_tf_value, price_range, most_recent_price)})
 
         for symbol, symbol_values in symbols_one_day_trades.items():

@@ -5,7 +5,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 
 import logs
 from data_staging import get_current_second_in_ms, mins_to_ms, round_last_ten_secs
-from vars_constants import DB_TS, MongoDB, DEFAULT_COL_SEARCH, PARSED_AGGTRADES_DB, AGGTRADES_DB
+from vars_constants import TS, MongoDB, DEFAULT_SYMBOL_SEARCH, PARSED_AGGTRADES_DB, AGGTRADES_DB
 
 trades_chart = '{}_trades_chart'
 localhost = 'localhost:27017/'
@@ -65,19 +65,23 @@ def insert_parsed_aggtrades(data: dict) -> None:
         connect_to_parsed_aggtrade_db().get_collection(key).insert_many(data[key])
 
 
-def insert_many_db(db, data, symbol) -> None:
-    connect_to_db(db).get_collection(symbol).insert_many(data)
+def insert_many_db(db, data, col_name) -> None:
+    connect_to_db(db).get_collection(col_name).insert_many(data)
+
+
+def insert_many_db_same_col_name(db_col, data):
+    insert_many_db(db_col, data, db_col)
 
 
 def insert_bundled_aggtrades(data) -> None:
-    insert_many_db(AGGTRADES_DB, data, AGGTRADES_DB)
+    insert_many_db_same_col_name(AGGTRADES_DB, data)
 
 
 def query_parsed_aggtrade(symbol, ts_begin, ts_end):
     return query_db_col_between(PARSED_AGGTRADES_DB, symbol, ts_begin, ts_end)
 
 
-def query_db_col_between(db_name, col, highereq, lowereq, column_name=DB_TS):
+def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS):
     return list(query_db_collection(db_name, col).find(
         {MongoDB.AND: [{column_name: {MongoDB.HIGHER_EQ: highereq}},
                        {column_name: {MongoDB.LOWER_EQ: lowereq}}]}))
@@ -93,8 +97,8 @@ def query_parsed_aggtrade_multiple_timeframes(symbols: list, ts_begin, ts_end):
 
 def query_db_col_earliest_oldest_ts(db_name, collection, earliest=True, init_db=False):
     if values := query_all_dbcol_values(db_name, collection):
-        values = sorted(values, key=itemgetter(DB_TS))
-        first_value_ts, last_value_ts = values[0][DB_TS], values[-1][DB_TS]
+        values = sorted(values, key=itemgetter(TS))
+        first_value_ts, last_value_ts = values[0][TS], values[-1][TS]
 
         if earliest:
             return first_value_ts if first_value_ts > last_value_ts else last_value_ts
@@ -132,7 +136,7 @@ def query_existing_ws_trades(start_ts, end_ts, ms_parse_interval):
     existing_trades = []
 
     for elem in list(range(min(list(start_ts.values())), max(list(end_ts.values())), assume_existing_parse_interval)):
-        if query_parsed_aggtrade(DEFAULT_COL_SEARCH, elem, elem + assume_existing_parse_interval):
+        if query_parsed_aggtrade(DEFAULT_SYMBOL_SEARCH, elem, elem + assume_existing_parse_interval):
             existing_trades += list(range(elem, elem + assume_existing_parse_interval, ms_parse_interval))
 
     return existing_trades
