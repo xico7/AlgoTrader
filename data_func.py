@@ -1,11 +1,8 @@
-from typing import Optional
-
 from support.decorators_extenders import init_only_existing
 from vars_constants import PRICE, QUANTITY, SYMBOL, TS, DEFAULT_PARSE_INTERVAL, ONE_HOUR_IN_MS, \
-    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, FUND_DB, MARKETCAP
+    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, FUND_DB, MARKETCAP, AGGTRADES_DB
 from dataclasses import dataclass
-from MongoDB.db_actions import insert_bundled_aggtrades, insert_parsed_aggtrades, connect_to_parsed_aggtrade_db, \
-    insert_many_db, query_starting_ts, query_existing_ws_trades, insert_many_db_same_col_name
+from MongoDB.db_actions import insert_parsed_aggtrades, insert_many_db, query_starting_ts, query_existing_ws_trades, connect_to_db
 from data_staging import round_last_ten_secs, current_milli_time
 
 
@@ -31,7 +28,7 @@ class CacheAggtrades(dict):
 
     def insert_clear(self):
         insert_parsed_aggtrades(self.symbol_parsed_trades)
-        insert_bundled_aggtrades(self.bundled_trades)
+        insert_many_db(AGGTRADES_DB, self.bundled_trades, same_col_db_name=True)
         self.symbol_parsed_trades.clear()
         self.bundled_trades.clear()
 
@@ -76,7 +73,7 @@ class SymbolsTimeframeTrade(Trade):
 
     def __init__(self, timeframe_in_ms=ONE_HOUR_IN_MS, db_name=PARSED_TRADES_BASE_DB,
                  parse_interval_in_secs=DEFAULT_PARSE_INTERVAL,
-                 symbols=connect_to_parsed_aggtrade_db().list_collection_names(), start_ts=None, end_ts=None):
+                 symbols=connect_to_db(PARSED_AGGTRADES_DB).list_collection_names(), start_ts=None, end_ts=None):
 
         super().__init__(symbols=symbols, timeframe_in_ms=timeframe_in_ms, parse_interval_in_secs=parse_interval_in_secs)
 
@@ -185,7 +182,7 @@ class FundTimeframeTrade(Trade):
                                                   MARKETCAP: marketcap_quantity[MARKETCAP],
                                                   QUANTITY: marketcap_quantity[QUANTITY]})
 
-        insert_many_db_same_col_name(self.db_col_name, tf_marketcap_quantity_as_list)
+        insert_many_db(self.db_col_name, tf_marketcap_quantity_as_list, same_col_db_name=True)
 
     def reset_add_interval(self):
         pass

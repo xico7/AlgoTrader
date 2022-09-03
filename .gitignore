@@ -1,0 +1,12 @@
+/.idea/*
+/__pycache__/*
+/support/*
+/MongoDB/*
+/.idea/*
+/__pycache__/*
+/.idea/.gitignore
+/.idea/AlgoTrader.iml
+/.idea/misc.xml
+/.idea/modules.xml
+/__pycache__/argparse_func.cpython-38.pyc
+/__pycache__/data_staging.cpython-38.pyc

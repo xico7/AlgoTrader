@@ -3,7 +3,7 @@ import time
 import logs
 from vars_constants import ONE_MIN_IN_MS, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, PRICE, QUANTITY, MARKETCAP
 from data_func import SymbolsTimeframeTrade, FundTimeframeTrade
-from MongoDB.db_actions import query_parsed_aggtrade_multiple_timeframes, list_db_cols
+from MongoDB.db_actions import query_parsed_aggtrade_multiple_timeframes, connect_to_db
 from data_staging import current_milli_time
 
 
@@ -15,8 +15,7 @@ def parse_trades_ten_seconds():
     parse_aggtrade = SymbolsTimeframeTrade()
 
     while parse_aggtrade.get_last_end_ts() < current_milli_time() - ONE_MIN_IN_MS:
-        parse_aggtrade += query_parsed_aggtrade_multiple_timeframes(
-            list_db_cols(PARSED_AGGTRADES_DB), parse_aggtrade.start_ts, parse_aggtrade.end_ts)
+        parse_aggtrade += query_parsed_aggtrade_multiple_timeframes(connect_to_db(PARSED_AGGTRADES_DB).list_collection_names(), parse_aggtrade.start_ts, parse_aggtrade.end_ts)
 
 
         parse_aggtrade.insert_in_db()
