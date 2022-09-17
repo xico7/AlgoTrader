@@ -1,18 +1,20 @@
-
 import logging
 import os
 import sys
 from functools import wraps
-
+import io
 from logging import handlers
 from os import path
 
 LOG_BASE_NAME = 'algo-trader'
-
+LOG_BASE_FILE_NAME = os.environ.get('LOG_FILE_NAME', os.path.basename(sys.argv[0]))
+LOG_LOCATION = os.environ.get('LOG_LOCATION', ".")
+LOG_FILE_NAME = "{0}.log".format(LOG_BASE_FILE_NAME)
 logging.VERBOSE = 5
 
 _current_instance_ = None
 _current_method_ = None
+
 
 def executing_method(f):
     @wraps(f)
@@ -26,6 +28,7 @@ def executing_method(f):
         _current_instance_ = None
         _current_method_ = None
         return ret
+
     return _
 
 
@@ -38,12 +41,21 @@ def __add_verbose_to_log():
 
     logging.Logger.verbose = verbose
 
+
 __add_verbose_to_log()
 del __add_verbose_to_log
 
 
+class FilterLogLevel(object):
+    def __init__(self, level):
+        self.__level = level
+
+    def filter(self, logRecord):
+        return logRecord.levelno == self.__level
+
+
 def setup_logs(verbosity):
-    global LOG_BASE_NAME
+    global LOG_BASE_NAME, end_of_exec_handler
 
     worst_log_level = verbosity
 
@@ -53,11 +65,8 @@ def setup_logs(verbosity):
 
     LOG_FORMAT = f"%(asctime)-15s [%(levelname)-5.5s] {log_func_verbosity} %(message)s"
 
-    LOG_FILE_NAME = os.environ.get('LOG_FILE_NAME', os.path.basename(sys.argv[0]))
-    LOG_LOCATION = os.environ.get('LOG_LOCATION', ".")
     LOG_LOCATION_VERBOSE = os.environ.get('LOG_LOCATION_VERBOSE', LOG_LOCATION)
     LOG_BASE_NAME = os.environ.get('LOG_BASE_NAME', LOG_BASE_NAME)
-
 
     LOG = logging.getLogger(LOG_BASE_NAME)
     logFormat = logging.Formatter(LOG_FORMAT)
@@ -66,8 +75,7 @@ def setup_logs(verbosity):
         LOG_ssh = logging.getLogger("paramiko")
         LOG_ssh.setLevel(logging.VERBOSE)
 
-
-    logFileHandler = handlers.RotatingFileHandler(path.normpath(LOG_LOCATION + "/{0}.log".format(LOG_FILE_NAME)), encoding='utf-8')
+    logFileHandler = handlers.RotatingFileHandler(path.normpath(LOG_LOCATION + '/' + LOG_FILE_NAME), encoding='utf-8')
     logFileHandler.setLevel(verbosity)
     logFileHandler.setFormatter(logFormat)
     LOG.addHandler(logFileHandler)
@@ -75,7 +83,7 @@ def setup_logs(verbosity):
     if verbosity in (logging.VERBOSE, logging.DEBUG) and LOG_LOCATION_VERBOSE:
         worst_log_level = min(logging.VERBOSE, worst_log_level)
         logVerboseFileHandler = handlers.RotatingFileHandler \
-            (path.normpath(LOG_LOCATION_VERBOSE + "/{0}.verbose.log".format(LOG_FILE_NAME)), encoding='utf-8')
+            (path.normpath(LOG_LOCATION_VERBOSE + "/{0}.verbose.log".format(LOG_BASE_FILE_NAME)), encoding='utf-8')
         logVerboseFileHandler.setLevel(logging.VERBOSE)
         logVerboseFileHandler.setFormatter(logFormat)
         LOG.addHandler(logVerboseFileHandler)
@@ -85,9 +93,14 @@ def setup_logs(verbosity):
     logConsoleHandler.setLevel(verbosity)
     LOG.addHandler(logConsoleHandler)
 
+    end_of_exec_handler = logging.StreamHandler(io.StringIO())
+    end_of_exec_handler.setFormatter(logFormat)
+    end_of_exec_handler.addFilter(FilterLogLevel(logging.WARNING))
+    LOG.addHandler(end_of_exec_handler)
+
     if verbosity in (logging.VERBOSE,) and LOG_ssh:
         logVerboseFileHandler = handlers.RotatingFileHandler \
-            (path.normpath(LOG_LOCATION_VERBOSE + "/{0}.verbose.ssh.log".format(LOG_FILE_NAME)), encoding='utf-8')
+            (path.normpath(LOG_LOCATION_VERBOSE + "/{0}.verbose.ssh.log".format(LOG_BASE_FILE_NAME)), encoding='utf-8')
         logVerboseFileHandler.setLevel(logging.VERBOSE)
         logVerboseFileHandler.setFormatter(logFormat)
         LOG_ssh.addHandler(logVerboseFileHandler)
@@ -98,7 +111,6 @@ def setup_logs(verbosity):
         old_factory = logging.getLogRecordFactory()
 
         def record_factory(*args, **kwargs):
-            import traceback, types, inspect
             sys._getframe(3)
             record = old_factory(*args, **kwargs)
 
@@ -119,12 +131,4 @@ def setup_logs(verbosity):
         logging.setLogRecordFactory(record_factory)
 
     module_in_logs()
-
-
-    # LOG.warning("\n\n")
-    # LOG.warning("-------LOG STARTING FOR %s @ %s -------\n\n", LOG_FILE_NAME, datetime.now())
-
-
-
-
 

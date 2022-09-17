@@ -1,33 +1,37 @@
+import contextlib
+import logging
 from binance import AsyncClient, BinanceSocketManager
-from data_func import Aggtrade, CacheAggtrades
-from support.helper_func import output_error
-from vars_constants import AGGTRADE_PYCACHE
-from data_staging import usdt_with_bnb_symbols_stream, lower_add_aggtrade
+import logs
+from data_func import CacheAggtrades
+from data_staging import usdt_with_bnb_symbols_aggtrades
 
 
 # TODO: implement coingecko verification symbols for marketcap, how?
 # TODO: implement coingecko refresh 24h.
 
-class QueueOverflow(Exception):
-    pass
+LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
+
+
+class QueueOverflow(Exception): pass
 
 
 async def execute_ws_trades():
     cache_symbols_parsed = CacheAggtrades()
 
-    async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(lower_add_aggtrade(usdt_with_bnb_symbols_stream())) as tscm:
+    async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_aggtrades()) as tscm:
         while True:
             try:
                 ws_trade = await tscm.recv()
-                cache_symbols_parsed.append(vars(Aggtrade(**ws_trade['data'])))
-                if len(cache_symbols_parsed) > AGGTRADE_PYCACHE:
-                    cache_symbols_parsed.insert_clear()
             except Exception as e:
-                if ws_trade['m'] == 'Queue overflow. Message not filled':
-                    raise QueueOverflow
+                with contextlib.suppress(KeyError):
+                    if ws_trade['m'] == 'Queue overflow. Message not filled':
+                        raise QueueOverflow("Queue Overflor error while trying to parse websocket trade with data: '%s'.", ws_trade)
 
-                output_error(f"{e}, {ws_trade}")
+                LOG.exception("Error while trying to parse websocket trade with data: '%s'.", ws_trade)
+                exit(2)
 
+            cache_symbols_parsed.append(ws_trade['data'])
+            cache_symbols_parsed.insert_clear()
 
 
 

@@ -1,15 +1,11 @@
 import asyncio
 import inspect
 import argparse_func as argp
-from support.helper_func import output_error
 
 
 async def async_main(func, args):
     while True:
-        try:
-            await func(*args) if args else await func()
-        except Exception as e:
-            output_error(e)
+        await func(*args) if args else await func()
 
 
 def main():

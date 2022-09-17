@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 import logs
 from vars_constants import TS, FIVE_SECS_IN_MS
-from MongoDB.db_actions import connect_to_db, trades_chart, query_starting_ts, query_db_col_between, insert_many_db
+from MongoDB.db_actions import connect_to_db, trades_chart, query_starting_ts, query_db_col_between, insert_many_same_db_col
 from data_staging import get_counter, get_current_second_in_ms, mins_to_ms
 
 
@@ -49,7 +49,7 @@ def transform_trade_data(args):
 
         cache += 1
         if cache == 30:
-            insert_many_db(trades_chart.format(args['chart_minutes']), price_volume_chart)
+            insert_many_same_db_col(trades_chart.format(args['chart_minutes']), price_volume_chart)
             price_volume_chart = []
             cache = 0
 

@@ -1,5 +1,3 @@
-from collections import namedtuple
-
 import requests
 import re
 import time
@@ -61,18 +59,12 @@ def transform_data(data, *keys):
     return data_keys
 
 
-def usdt_with_bnb_symbols_stream() -> list:
+def usdt_with_bnb_symbols_aggtrades() -> list:
     all_symbols = [symbol_data['symbol'] for symbol_data in requests.get("https://api.binance.com/api/v3/ticker/price").json()]
     usdt_symbols = [symbol for symbol in all_symbols if USDT in symbol]
 
-    return [symbol for symbol in usdt_symbols
-            if symbol.replace(USDT, BNB) in all_symbols
-            or BNB + symbol.replace(USDT, '') in all_symbols
-            or symbol == 'BNBUSDT']
-
-
-def lower_add_aggtrade(symbols: list):
-    return [symbol.lower() + '@aggTrade' for symbol in symbols]
+    return [symbol.lower() + '@aggTrade' for symbol in usdt_symbols if symbol.replace(USDT, BNB) in all_symbols
+            or BNB + symbol.replace(USDT, '') in all_symbols or symbol == 'BNBUSDT']
 
 
 def get_counter(min_value, range, price):
