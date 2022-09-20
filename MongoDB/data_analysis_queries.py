@@ -1,4 +1,4 @@
-from data_staging import MongoDB
+from data_handling.data_helpers.data_staging import MongoDB
 from MongoDB.db_actions import connect_to_db, connect_price_chart_db
 import matplotlib.pyplot as plt
 

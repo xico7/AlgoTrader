@@ -11,8 +11,7 @@ PROGRAM_NAME = 'Algotrading-Crypto'
 transform_trade_data = 'transform-trade-data'
 
 
-logs.setup_logs(
-    verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, logging.VERBOSE][:4 + 1][-1])
+logs.setup_logs(verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, logging.VERBOSE][:4 + 1][-1])
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
 
 

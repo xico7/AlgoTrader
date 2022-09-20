@@ -10,3 +10,10 @@
 /.idea/modules.xml
 /__pycache__/argparse_func.cpython-38.pyc
 /__pycache__/data_staging.cpython-38.pyc
+/libs_posix/*
+/data_handling/data_helpers/__pycache__/*
+/main.py.*
+/tasks/__pycache__/*
+*__pycache__*
+core_startup/__pycache__/*
+data_handling/__pycache__/*

@@ -40,6 +40,6 @@ def into_package_filter(f: Path):
 
 printe("packaging...")
 
-zipapp.create_archive('.', name + '.py', "/usr/bin/env python3", filter=into_package_filter)
+zipapp.create_archive('', name + '.py', "/usr/bin/env python3", filter=into_package_filter)
 
 printe("done")
