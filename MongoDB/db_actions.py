@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import time
 
 import pymongo
 from pymongo import MongoClient
@@ -49,16 +50,37 @@ def db_col_names(db_name):
     return connect_to_db(db_name).list_collection_names()
 
 
-def insert_many_same_db_col(db, data) -> None:
-    connect_to_db(db).get_collection(db).insert_many(data)
+def insert_many_db(db, col, data, retry_count=0) -> None:
+    try:
+        connect_to_db(db).get_collection(col).insert_many(data)
+    except Exception as e:
+        if retry_count >= 5:
+            print("not working.. fix")
+        print("here")
+        time.sleep(0.5)
+        retry_count += 1
+        insert_many_db(db, data, retry_count)
+
+
+def insert_many_same_db_col(db, data, retry_count=0) -> None:
+    try:
+        connect_to_db(db).get_collection(db).insert_many(data)
+    except Exception as e:
+        if retry_count >= 5:
+            print("not working.. fix")
+        print("here")
+        time.sleep(0.5)
+        retry_count += 1
+        insert_many_same_db_col(db, data, retry_count)
+
 
 
 def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=0, sort_value=pymongo.DESCENDING) -> [dict, list]:
-    from data_handling.data_func import Trade
+    from data_handling.data_func import TradeData
     if query_val := list(connect_to_db(db_name).get_collection(col).find({
         MongoDB.AND: [{column_name: {MongoDB.HIGHER_EQ: highereq}},
                       {column_name: {MongoDB.LOWER_EQ: lowereq}}]}).sort(column_name, sort_value).limit(limit)):
-        return Trade(**query_val[0]) if limit == 1 else [Trade(**elem) for elem in query_val]
+        return TradeData(**query_val[0]) if limit == 1 else [TradeData(**elem) for elem in query_val]
 
     return None
 

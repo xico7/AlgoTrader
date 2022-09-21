@@ -22,6 +22,10 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 class QueueOverflow(Exception): pass
 
 
+def execute_past_trades():
+    print("here")
+
+
 async def execute_ws_trades():
     from datetime import datetime
     import time
@@ -32,7 +36,7 @@ async def execute_ws_trades():
         while True:
             try:
                 ws_trade = await tscm.recv()
-            except Exception as e:
+            except Exception:
                 with contextlib.suppress(KeyError):
                     if ws_trade['m'] == 'Queue overflow. Message not filled':
                         raise QueueOverflow("Queue Overflow error while trying to parse websocket trade with data: '%s'.", ws_trade)
