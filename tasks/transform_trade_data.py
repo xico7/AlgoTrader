@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 import logs
-from data_handling.data_helpers.vars_constants import TS, FIVE_SECS_IN_MS
+from data_handling.data_helpers.vars_constants import TS, FIVE_SECS_IN_MS, PARSED_AGGTRADES_DB, DEFAULT_COL_SEARCH
 from MongoDB.db_actions import trades_chart, query_starting_ts, query_db_col_between, insert_many_same_db_col, db_col_names
 from data_handling.data_helpers.data_staging import get_counter, get_current_second_in_ms, mins_to_ms
 
@@ -22,7 +22,7 @@ def transform_trade_data(args):
     for collection in db_col_names(transform_db_name):
         start_ts[collection] = query_starting_ts(trades_chart.format(args['chart_minutes']), collection, init_db=transform_db_name)
         end_ts[collection] = start_ts[collection] + mins_to_ms(args['chart_minutes']) + FIVE_SECS_IN_MS
-        query_db_col_between("parsed_aggtrades", "BTCUSDT", btcusdt_start_ts, btcusdt_end_ts, limit=1)
+        query_db_col_between(PARSED_AGGTRADES_DB, DEFAULT_COL_SEARCH, btcusdt_start_ts, btcusdt_end_ts, limit=1)
 
         symbols_one_day_trades[collection] = query_db_col_between(transform_db_name, collection, start_ts[collection], end_ts[collection])
 

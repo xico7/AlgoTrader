@@ -16,3 +16,4 @@
 *__pycache__*
 core_startup/__pycache__/*
 data_handling/__pycache__/*
+/data_handling/data_helpers/secrets.py

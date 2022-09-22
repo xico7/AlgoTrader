@@ -1,20 +1,16 @@
 import contextlib
 import logging
-
-
-from binance import AsyncClient, BinanceSocketManager
+from binance import AsyncClient, BinanceSocketManager, Client
 import logs
+from MongoDB.db_actions import query_db_col_between, connect_to_db
 from data_handling.data_func import CacheAggtrades
-from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols_aggtrades
-
+from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols_aggtrades, get_current_second_in_ms, \
+    usdt_with_bnb_symbols
 
 # TODO: implement coingecko verification symbols for marketcap, how?
 # TODO: implement coingecko refresh 24h.
-# TODO: Add "recover data" from https://binance-docs.github.io/apidocs/spot/en/#compressed-aggregate-trades-list
-#  if/when ws-trades fails.
-# TODO: Implement ws-trades validator from startup time.. with recover from above's TODO,
-#  with this i can assume the program is self-healing, only run parse_trades after that.
-
+from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
+from data_handling.data_helpers.vars_constants import ONE_MIN_IN_MS
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -23,6 +19,31 @@ class QueueOverflow(Exception): pass
 
 
 def execute_past_trades():
+    from MongoDB.db_actions import query_starting_ts
+    from data_handling.data_helpers.vars_constants import PARSED_AGGTRADES_DB, DEFAULT_COL_SEARCH
+
+    if not (validated_ts := connect_to_db('validator_db').get_collection('validated_timestamp').find_one()):
+        validated_ts = query_starting_ts(PARSED_AGGTRADES_DB, DEFAULT_COL_SEARCH)
+        connect_to_db('validator_db').get_collection('validated_timestamp').insert_one({'timestamp': validated_ts})
+
+    def verify_ws_trades():
+        not_done_minute_list = []
+        for ts in range(validated_ts, get_current_second_in_ms(), ONE_MIN_IN_MS):
+            if not query_db_col_between(PARSED_AGGTRADES_DB, DEFAULT_COL_SEARCH, ts, ts + ONE_MIN_IN_MS, limit=1):
+                not_done_minute_list.append(ts)
+
+        return not_done_minute_list
+
+    undone_list = verify_ws_trades()
+
+    client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+
+    for symbol in usdt_with_bnb_symbols():
+
+        midnight_day = 1663718400000
+        THIRTY_MINS_IN_MS = 60 * 60 * 0.5 * 1000
+        a = client.get_aggregate_trades(**{'symbol': DEFAULT_COL_SEARCH, 'startTime': midnight_day, 'endTime': midnight_day + THIRTY_MINS_IN_MS, 'limit': 999999999})
+
     print("here")
 
 

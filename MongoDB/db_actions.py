@@ -74,7 +74,6 @@ def insert_many_same_db_col(db, data, retry_count=0) -> None:
         insert_many_same_db_col(db, data, retry_count)
 
 
-
 def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=0, sort_value=pymongo.DESCENDING) -> [dict, list]:
     from data_handling.data_func import TradeData
     if query_val := list(connect_to_db(db_name).get_collection(col).find({
@@ -98,7 +97,7 @@ def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool):
 
 def query_starting_ts(db_name, collection, init_db=None):
     try:
-        return query_db_col_timestamp_endpoint(db_name, collection, True)
+        return query_db_col_timestamp_endpoint(db_name, collection, most_recent=False)
     except EmptyCollectionInDB:
         if init_db:
             with contextlib.suppress(EmptyCollectionInDB):
