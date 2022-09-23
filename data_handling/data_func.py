@@ -1,17 +1,13 @@
-import contextlib
 import logging
 import time
-from contextlib import suppress
 from typing import Optional
 
 import logs
 from support.decorators_extenders import init_only_existing
 from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, SYMBOL, TS, DEFAULT_PARSE_INTERVAL, \
-    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, FUND_DB, MARKETCAP, AGGTRADES_DB, \
-    AGGTRADE_PYCACHE, ONE_HOUR_IN_MS, DEFAULT_TIMEFRAME_IN_MS
+    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, FUND_DB, MARKETCAP, AGGTRADES_DB, DEFAULT_TIMEFRAME_IN_MS
 from dataclasses import dataclass, asdict
-from MongoDB.db_actions import insert_many_same_db_col, query_starting_ts, connect_to_db, InvalidDataProvided, \
-    query_db_col_between, insert_many_db
+from MongoDB.db_actions import insert_many_same_db_col, query_starting_ts, connect_to_db, InvalidDataProvided, insert_many_db
 from data_handling.data_helpers.data_staging import round_last_ten_secs, current_milli_time
 
 
@@ -36,16 +32,12 @@ class CacheAggtrades(dict):
         self.symbol_parsed_trades.setdefault(aggtrade.symbol, []).append(aggtrade.data)
 
     def insert_clear(self):
-        if len(self) < AGGTRADE_PYCACHE:
-            return False
-
         for symbol, trades in self.symbol_parsed_trades.items():
             insert_many_db(PARSED_AGGTRADES_DB, symbol, trades)
 
         insert_many_same_db_col(AGGTRADES_DB, self.bundled_trades)
         self.symbol_parsed_trades.clear()
         self.bundled_trades.clear()
-
         return True
 
 
@@ -59,21 +51,21 @@ class Aggtrade:
         kwargs[SYMBOL] = kwargs['s']
         try:
             if kwargs['asdict']:
-                kwargs['data'] = {PRICE: float(kwargs['p']), QUANTITY: float(kwargs['q']), TS: int(kwargs['E'])}
+                kwargs['data'] = {'ID': kwargs['a'], PRICE: float(kwargs['p']), QUANTITY: float(kwargs['q']), TS: int(kwargs['T'])}
         except KeyError:
-            kwargs['data'] = TradeData(float(kwargs['p']), float(kwargs['q']), int(kwargs['E']))
+            kwargs['data'] = TradeData(kwargs['a'], float(kwargs['p']), float(kwargs['q']), int(kwargs['T']))
         return args, kwargs
 
 
 @init_only_existing
 @dataclass
 class TradeData:
+    ID: float
     price: float
     quantity: float
     timestamp: Optional[int]
 
 
-# TODO: Improve this part..
 class Trade:
     def __init__(self, symbols=None):
         self.ts_data = {}
@@ -195,3 +187,13 @@ class FundTimeframeTrade(Trade):
 
             self.tf_marketcap_quantity[tf].price = current_marketcap
             self.tf_marketcap_quantity[tf].quantity = volume_traded
+
+
+    # No longer needed code as an idea for future problems.
+    # possible_ts_keys = ['E', 'T']
+    # for key in (possible_ts_keys):
+    #     with contextlib.suppress(KeyError):
+    #         timestamp = int(kwargs[key])
+    #         break
+    # else:
+    #     raise KeyError("No key found for timestamp value.")

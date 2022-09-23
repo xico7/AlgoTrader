@@ -14,7 +14,7 @@ def get_current_second() -> int:
 
 
 def get_current_second_in_ms():
-    return float(get_current_second() * 1000)
+    return int(get_current_second() * 1000)
 
 
 def mins_to_ms(minutes):
@@ -63,12 +63,12 @@ def usdt_with_bnb_symbols() -> list:
     all_symbols = [symbol_data['symbol'] for symbol_data in requests.get("https://api.binance.com/api/v3/ticker/price").json()]
     usdt_symbols = [symbol for symbol in all_symbols if USDT in symbol]
 
-    return [symbol.lower() for symbol in usdt_symbols if symbol.replace(USDT, BNB) in all_symbols
+    return [symbol for symbol in usdt_symbols if symbol.replace(USDT, BNB) in all_symbols
             or BNB + symbol.replace(USDT, '') in all_symbols or symbol == 'BNBUSDT']
 
 
 def usdt_with_bnb_symbols_aggtrades() -> list:
-    return [symbol + '@aggTrade' for symbol in usdt_with_bnb_symbols()]
+    return [symbol.lower() + '@aggTrade' for symbol in usdt_with_bnb_symbols()]
 
 
 def get_counter(min_value, range, price):
