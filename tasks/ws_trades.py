@@ -4,7 +4,7 @@ from datetime import datetime
 
 from binance import AsyncClient, BinanceSocketManager, Client
 import logs
-from MongoDB.db_actions import connect_to_db, delete_db
+from MongoDB.db_actions import connect_to_db
 from data_handling.data_func import CacheAggtrades
 from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols_aggtrades, usdt_with_bnb_symbols, \
     get_current_second_in_ms
@@ -21,10 +21,11 @@ class QueueOverflow(Exception): pass
 
 
 def execute_past_trades():
-    if start_ts := connect_to_db('validator_db').get_collection('validated_timestamp').find_one():
+    if start_ts := connect_to_db('end_timestamp_validator_db').get_collection('validated_timestamp').find_one():
         start_ts = start_ts['timestamp']
     else:
-        start_ts = 1640955600000  # 31 December 2021
+        start_ts = 1640955600000
+        connect_to_db('start_timestamp_validator_db').get_collection('start_timestamp').insert_one({'timestamp': start_ts})  # 31 December 2021
 
     client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
     cache_symbols_parsed = CacheAggtrades()
@@ -36,9 +37,7 @@ def execute_past_trades():
             for trade in client.get_aggregate_trades(**{'symbol': symbol, 'startTime': start_ts,
                                                         'endTime': end_ts, 'limit': 999999999}):
                 cache_symbols_parsed.append({**trade, **{'s': symbol}})
-        if cache_symbols_parsed.insert_clear():
-            delete_db('validator_db')
-            connect_to_db('validator_db').get_collection('validated_timestamp').insert_one({'timestamp': end_ts})
+        cache_symbols_parsed.insert_clear(end_ts)
         LOG.info(f"{THIRTY_MINS_IN_MS / 1000} of aggtrades inserted from {datetime.fromtimestamp(start_ts / 1000)} to "
                  f"{datetime.fromtimestamp((start_ts + THIRTY_MINS_IN_MS) / 1000)}.")
         start_ts = end_ts + 1000
@@ -47,9 +46,6 @@ def execute_past_trades():
 
 
 async def execute_ws_trades():
-    from datetime import datetime
-    import time
-    print(datetime.fromtimestamp(time.time()))
     cache_symbols_parsed = CacheAggtrades()
 
     async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket(usdt_with_bnb_symbols_aggtrades()) as tscm:
