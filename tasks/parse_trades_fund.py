@@ -1,11 +1,8 @@
 import logging
 import time
-
+from datetime import datetime
 import logs
-from data_handling.data_func import FundTimeframeTrade
-from MongoDB.db_actions import connect_to_db
-from data_handling.data_helpers.data_staging import current_milli_time
-from data_handling.data_helpers.vars_constants import ONE_MIN_IN_MS
+from data_handling.data_func import FundTimeframeTrade, NoMoreParseableTrades
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -13,13 +10,20 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 def parse_fund_trades_ten_seconds():
     LOG.info("Beginning to parse fund ten seconds trades.")
 
-    fund_data = FundTimeframeTrade()
-
-    while fund_data.end_ts < (current_milli_time() - ONE_MIN_IN_MS):
-        if fund_data.end_ts < connect_to_db('validator_db').get_collection('validated_timestamp').find_one()['timestamp']:
+    try:
+        fund_data = None
+        while True:
+            if not fund_data:
+                fund_data = FundTimeframeTrade()
             fund_data.parse_trades()
             fund_data.insert_in_db()
-            fund_data = FundTimeframeTrade(start_ts=fund_data.end_ts)
-        time.sleep(10)
 
-        LOG.info("Finished parsing fund ten seconds trades.")
+            LOG.info(f"Parsed symbol pairs from {datetime.fromtimestamp(fund_data.start_ts / 1000)} to "
+                     f"{datetime.fromtimestamp((fund_data.start_ts + fund_data.timeframe) / 1000)}.")
+
+            fund_data = FundTimeframeTrade((fund_data.start_ts + fund_data.timeframe))
+    except NoMoreParseableTrades:
+        LOG.info("Finished parsing fund ten seconds trades, sleeping for now.")
+        time.sleep(60)
+        parse_fund_trades_ten_seconds()
+

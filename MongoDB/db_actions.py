@@ -102,15 +102,15 @@ def delete_all_text_dbs(text) -> None:
 
 def create_index_db_cols(db, field) -> None:
     for col in db_col_names(db):
-        connect_to_db(db).get_collection(col).create_index([(field, -1)], unique=True)
+        connect_to_db(db).get_collection(col).create_index([(field, -1)])
         print(f"Created index for collection {col}.")
 #
 #
 # create_index_db_cols('parsed_aggtrades', 'ID')
-# create_index_db_cols('aggtrades', 'timestamp')
+#create_index_db_cols('parsed_aggtrades', 'timestamp')
 
 
-# delete_all_text_dbs("symb")
+#delete_all_text_dbs("time")
 
 
 # def query_existing_ws_trades(start_ts, end_ts, ms_parse_interval):  # If BTCUSDT has trades working it assumes all other symbols were working.

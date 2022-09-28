@@ -12,7 +12,7 @@ from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols_aggtra
 # TODO: implement coingecko verification symbols for marketcap, how?
 # TODO: implement coingecko refresh 24h.
 from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
-from data_handling.data_helpers.vars_constants import THIRTY_MINS_IN_MS, AGGTRADE_PYCACHE
+from data_handling.data_helpers.vars_constants import THIRTY_MINS_IN_MS, AGGTRADE_PYCACHE, TS, AGGTRADES_VALIDATOR_DB_TS
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -21,11 +21,8 @@ class QueueOverflow(Exception): pass
 
 
 def execute_past_trades():
-    if start_ts := connect_to_db('end_timestamp_validator_db').get_collection('validated_timestamp').find_one():
-        start_ts = start_ts['timestamp']
-    else:
-        start_ts = 1640955600000
-        connect_to_db('start_timestamp_validator_db').get_collection('start_timestamp').insert_one({'timestamp': start_ts})  # 31 December 2021
+    base_start_ts = connect_to_db(AGGTRADES_VALIDATOR_DB_TS).get_collection(TS).find_one()
+    start_ts = base_start_ts[TS] if base_start_ts else 1640955600000  # 31 December 2021
 
     client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
     cache_symbols_parsed = CacheAggtrades()
