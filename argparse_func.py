@@ -32,6 +32,7 @@ def algo_argparse():
 
     subparser.choices[transform_trade_data].add_argument(f"--db-name", required=True, help="TODO", choices=list_dbs())
     subparser.choices[transform_trade_data].add_argument(f"--chart-minutes", type=int, required=True, help="TODO")
+    subparser.choices[transform_trade_data].add_argument(f"--price-range-factor", type=float, required=True, help="TODO")
     return parent_parser.parse_args()
 
 

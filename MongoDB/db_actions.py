@@ -1,6 +1,5 @@
 import contextlib
 import logging
-import time
 
 import pymongo
 from pymongo import MongoClient
@@ -60,10 +59,11 @@ def insert_many_same_db_col(db, data) -> None:
 
 def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=0, sort_value=pymongo.DESCENDING) -> [dict, list]:
     from data_handling.data_func import TradeData
+    from data_handling.data_func import TradesGroup
     if query_val := list(connect_to_db(db_name).get_collection(col).find({
         MongoDB.AND: [{column_name: {MongoDB.HIGHER_EQ: highereq}},
                       {column_name: {MongoDB.LOWER_EQ: lowereq}}]}).sort(column_name, sort_value).limit(limit)):
-        return TradeData(**query_val[0]) if limit == 1 else [TradeData(**elem) for elem in query_val]
+        return TradeData(**query_val[0]) if limit == 1 else TradesGroup(**{'trades': [TradeData(**elem) for elem in query_val], 'start_ts': highereq, 'end_ts': lowereq})
     return None
 
 

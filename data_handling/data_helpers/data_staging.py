@@ -2,6 +2,7 @@ import requests
 import re
 import time
 from typing import Union, List
+
 from data_handling.data_helpers.vars_constants import USDT, BNB, TEN_SECS_MS, coingecko_marketcap_api_link, SP500_SYMBOLS_USDT_PAIRS
 
 
@@ -26,10 +27,6 @@ def round_last_ten_secs(timestamp):
     return timestamp - TEN_SECS_MS + (TEN_SECS_MS - (timestamp % TEN_SECS_MS))
 
 
-def current_milli_time():
-    return round(time.time() * 1000)
-
-
 def coin_ratio_marketcap():
     fund_marketcap = 0
     symbols_price_weight_marketcap, coin_ratio = {}, {}
@@ -46,6 +43,28 @@ def coin_ratio_marketcap():
         fund_marketcap += symbol_data['market_cap']
 
     return symbols_price_weight_marketcap, fund_marketcap
+
+
+def remove_none_values(object: dict):
+    return {k: v for k, v in object.items() if v is not None}
+
+
+def query_trades_fill_empty(db_name, symbols, start_ts, end_ts):
+    from MongoDB.db_actions import query_db_col_between
+    from data_handling.data_func import TradeData
+    filled_trades_trade_data = {}
+    filled_trades_timeframes = {}
+    for symbol in symbols:
+        if query_result := query_db_col_between(db_name, symbol, start_ts, end_ts):
+            filled_trades_trade_data[symbol] = query_result
+    for symbol, trades in filled_trades_trade_data.items():
+        filled_trades_timeframes[symbol] = [trade.timestamp for trade in trades]
+
+    for symbol in filled_trades_trade_data.keys():
+        for tf in range(start_ts, end_ts + 1, 10000):
+            if tf not in filled_trades_timeframes[symbol]:
+                filled_trades_trade_data[symbol].append(TradeData(None, 0, 0, tf))
+    return filled_trades_trade_data
 
 
 def transform_data(data, *keys):
@@ -70,11 +89,3 @@ def usdt_with_bnb_symbols() -> list:
 def usdt_with_bnb_symbols_aggtrades() -> list:
     return [symbol.lower() + '@aggTrade' for symbol in usdt_with_bnb_symbols()]
 
-
-def get_counter(min_value, range, price):
-    counter = 0
-    while difference := price - min_value:
-        difference -= range
-        counter += 1
-
-    return str(counter)

@@ -1,13 +1,13 @@
 import logging
 import time
-from typing import Optional
+from typing import Optional, List, Dict
 
 import logs
 from support.decorators_extenders import init_only_existing
 from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, SYMBOL, TS, DEFAULT_PARSE_INTERVAL, \
     PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, FUND_DB, MARKETCAP, AGGTRADES_DB, \
     DEFAULT_TIMEFRAME_IN_MS, AGGTRADES_VALIDATOR_DB_TS
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from MongoDB.db_actions import insert_many_same_db_col, query_starting_ts, connect_to_db, insert_many_db, delete_db
 from data_handling.data_helpers.data_staging import round_last_ten_secs
 
@@ -70,6 +70,44 @@ class TradeData:
     quantity: float
     timestamp: Optional[int]
 
+
+@dataclass
+class TradesGroup:
+    trades: List[TradeData]
+    start_ts: int
+    end_ts: int
+    min: float = field(init=False)
+    max: float = field(init=False)
+    most_recent_price: float = field(init=False)
+    one_percent: float = field(init=False)
+    range_price_volume: dict = field(init=False)
+    price_range_percentage: float = field(init=False)
+    total_volume: float = field(init=False)
+    last_price_counter: int = field(init=False)
+
+    def __post_init__(self):
+        aggregate_prices = [tf.price for tf in self.trades if tf.price]
+        self.min = min(aggregate_prices)
+        self.max = max(aggregate_prices)
+        self.one_percent = (self.max - self.min) / 100
+        self.range_price_volume = {i + 1: {'max': self.min + (self.one_percent * (i + 1)),
+                                           'min': self.min + (self.one_percent * i), QUANTITY: 0} for i in range(100)}
+        self.price_range_percentage = (self.max - self.min) * 100 / self.max
+        self.most_recent_price = self.trades[0].price
+        self.total_volume = sum([trade.quantity * trade.price for trade in self.trades])
+        self.last_price_counter = self.get_counter_factor_one_hundred(self.most_recent_price)
+
+    def get_counter_factor_one_hundred(self, trade_price):
+        if (counter := int(((trade_price - self.min) // self.one_percent) + 1)) > 100:
+            counter = 100
+        return counter
+
+    def fill_trades_tf(self):
+        for tf in range(self.start_ts, self.end_ts + 1, 10000):
+            if tf not in [trade.timestamp for trade in self.trades]:
+                self.trades.append(TradeData(None, 0, 0, tf))
+
+        return self
 
 class Trade:
     def __init__(self, symbols=None):
