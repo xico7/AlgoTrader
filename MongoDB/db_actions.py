@@ -6,7 +6,7 @@ from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError
 
 import logs
-from data_handling.data_helpers.data_staging import round_last_ten_secs, get_current_second_in_ms
+from data_handling.data_helpers.data_staging import round_last_ten_secs, get_current_second_in_ms, remove_none_values
 from data_handling.data_helpers.vars_constants import TS, MongoDB
 
 trades_chart = '{}_trades_chart'
@@ -53,8 +53,22 @@ def insert_many_db(db, col, data) -> None:
     connect_to_db(db).get_collection(col).insert_many(data)
 
 
+def insert_one_db(db, col, data) -> None:
+    connect_to_db(db).get_collection(col).insert_one(data)
+
+
 def insert_many_same_db_col(db, data) -> None:
     insert_many_db(db, db, data)
+
+
+def aggregate_symbol_filled_data(db_name, start_ts, end_ts, symbol, column_name=TS, limit=0, sort_value=pymongo.DESCENDING):
+    return query_db_col_between(db_name, symbol, start_ts, end_ts, column_name, limit, sort_value).fill_trades_tf(start_ts, end_ts)
+
+
+def aggregate_symbols_filled_data(db_name, start_ts, end_ts, column_name=TS, limit=0, sort_value=pymongo.DESCENDING):
+    trade_data = remove_none_values({symbol: query_db_col_between(db_name, symbol, start_ts, end_ts, column_name, limit, sort_value)
+                                     for symbol in db_col_names(db_name)})
+    return {symbol: trade_group.fill_trades_tf(start_ts, end_ts) for symbol, trade_group in trade_data.items()}
 
 
 def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=0, sort_value=pymongo.DESCENDING) -> [dict, list]:
@@ -63,7 +77,10 @@ def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=
     if query_val := list(connect_to_db(db_name).get_collection(col).find({
         MongoDB.AND: [{column_name: {MongoDB.HIGHER_EQ: highereq}},
                       {column_name: {MongoDB.LOWER_EQ: lowereq}}]}).sort(column_name, sort_value).limit(limit)):
-        return TradeData(**query_val[0]) if limit == 1 else TradesGroup(**{'trades': [TradeData(**elem) for elem in query_val], 'start_ts': highereq, 'end_ts': lowereq})
+        return TradeData(**query_val[0]) if limit == 1 else TradeData(**query_val[0]) if limit == 1 else \
+            TradesGroup(**{'trades': {elem['timestamp']: TradeData(**elem) for elem in query_val},
+                           'start_ts': highereq, 'end_ts': lowereq})
+
     return None
 
 
@@ -72,7 +89,7 @@ def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool):
         if endpoint := query_db_col_between(db_name, collection, 0, get_current_second_in_ms(), limit=1, sort_value=sort_val):
             return endpoint.timestamp
         else:
-            raise EmptyCollectionInDB("DB with name '%s' and collection '%s' contains no values.")
+            raise EmptyCollectionInDB(f"DB with name '{db_name}' and collection '{collection}' contains no values.")
 
     endpoints = [query_endpoint(db_name, collection, pymongo.DESCENDING), query_endpoint(db_name, collection, pymongo.ASCENDING)]
     return max(endpoints) if most_recent else min(endpoints)

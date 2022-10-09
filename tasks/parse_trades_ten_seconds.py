@@ -10,8 +10,6 @@ from MongoDB.db_actions import connect_to_db, query_db_col_between
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
-# TODO: criar um indice unique no TS dos tens secs parsed e fund..
-
 def parse_trades_ten_seconds():
     LOG.info("Beginning to parse ten seconds trades.")
 
