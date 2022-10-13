@@ -38,7 +38,7 @@ def execute_past_trades():
                                                         'endTime': end_ts, 'limit': 9999999999999999999}):
                 cache_symbols_parsed.append({**trade, **{'s': symbol}})
         cache_symbols_parsed.insert_clear(end_ts)
-        LOG.info(f"{THIRTY_MINS_IN_MS / 1000} of aggtrades inserted from {datetime.fromtimestamp(start_ts / 1000)} to "
+        LOG.info(f"{(THIRTY_MINS_IN_MS / 1000) / 60} minutes of aggtrades inserted from {datetime.fromtimestamp(start_ts / 1000)} to "
                  f"{datetime.fromtimestamp((start_ts + THIRTY_MINS_IN_MS) / 1000)}.")
         start_ts = end_ts + ONE_SECONDS_IN_MS
 

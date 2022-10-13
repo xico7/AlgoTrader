@@ -8,7 +8,8 @@ from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, SYMBOL, T
     PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, DEFAULT_SYMBOL_SEARCH, FUND_DB, MARKETCAP, AGGTRADES_DB, \
     DEFAULT_TIMEFRAME_IN_MS, AGGTRADES_VALIDATOR_DB_TS, DEFAULT_PARSE_INTERVAL_IN_MS
 from dataclasses import dataclass, asdict, field
-from MongoDB.db_actions import insert_many_same_db_col, query_starting_ts, connect_to_db, insert_many_db, delete_db
+from MongoDB.db_actions import insert_many_same_db_col, connect_to_db, insert_many_db, delete_db, \
+    query_db_col_timestamp_endpoint
 from data_handling.data_helpers.data_staging import round_last_ten_secs
 
 
@@ -70,6 +71,15 @@ class TradeData:
     quantity: float
     timestamp: Optional[int]
 
+    def _pre_init__(self, *args, **kwargs):
+        if 'marketcap' in kwargs:
+            kwargs['price'] = kwargs['marketcap']
+            kwargs.pop('marketcap')
+
+        if kwargs and 'ID' not in kwargs:
+            kwargs['ID'] = None
+
+        return args, kwargs
 
 @dataclass
 class TradesGroup:
@@ -100,9 +110,12 @@ class TradesGroup:
         self.last_price_counter = self.get_counter_factor_one_hundred(self.most_recent_price)
 
     def get_counter_factor_one_hundred(self, trade_price):
-        if (counter := int(((trade_price - self.min_price) // self.one_percent) + 1)) > 100:
-            counter = 100
-        return counter
+        if self.one_percent:
+            if (counter := int(((trade_price - self.min_price) // self.one_percent) + 1)) > 100:
+                counter = 100
+            return counter
+
+        return -1
 
     def fill_trades_tf(self, start_ts=None, end_ts=None):
         if not start_ts:
@@ -128,18 +141,18 @@ class Trade:
         self.ts_data = {}
         self.start_price = {}
         self.end_price = {}
-        self._symbols = symbols
+        self.symbols = symbols
         self.timeframe = DEFAULT_TIMEFRAME_IN_MS
         self.ms_parse_interval = DEFAULT_PARSE_INTERVAL * 1000
-        self.start_ts = 0
+        self.db_name = PARSED_TRADES_BASE_DB
 
-        for symbol in self._symbols:
+        for symbol in self.symbols:
             self.start_price[symbol] = 0
             self.end_price[symbol] = 0
             self.ts_data[symbol] = {}
 
     def add_trades(self, symbol, symbol_trades):
-        for trade in symbol_trades:
+        for trade in symbol_trades.values():
             if t := trade.price:
                 self.end_price[symbol] = t
                 if not self.start_price[symbol]:
@@ -156,41 +169,36 @@ class Trade:
             tf_trades.quantity += trade.quantity
         return self
 
-    def init_start_ts(self, start_ts, db_name, validator_db_name):
-        if start_ts:
-            self.start_ts = start_ts
-        elif start_ts := connect_to_db(validator_db_name).get_collection(TS).find_one():
-            self.start_ts = start_ts[TS]
-        else:
-            self.start_ts = query_starting_ts(db_name, DEFAULT_SYMBOL_SEARCH, init_db=PARSED_AGGTRADES_DB)
-
 
 class SymbolsTimeframeTrade(Trade):
-    def __init__(self, start_ts=None):
-        super().__init__(connect_to_db(PARSED_AGGTRADES_DB).list_collection_names())
-
+    def __init__(self, start_ts: dict = None):
+        self.start_ts = {}
         self.db_name = PARSED_TRADES_BASE_DB
-        self.validator_db = PARSED_TRADES_BASE_DB + "_timestamp_validator_db"
-        self.init_start_ts(start_ts, self.db_name, self.validator_db)
+        if start_ts:
+            self.start_ts = start_ts
+        else:
+            for symbol in connect_to_db(PARSED_AGGTRADES_DB).list_collection_names():
+                if endpoint := query_db_col_timestamp_endpoint(self.db_name, symbol, True, ignore_empty=True):
+                    self.start_ts[symbol] = endpoint + 1000
+                else:
+                    continue
 
-        self.end_ts = self.start_ts + self.timeframe
+        symbols = list(self.start_ts.keys())
+        super().__init__(symbols)
+        self.end_ts = {symbol: self.start_ts[symbol] + self.timeframe for symbol in symbols}
 
-        if self.end_ts > connect_to_db(AGGTRADES_VALIDATOR_DB_TS).get_collection(TS).find_one()[TS]:
-            LOG.error("No more trades to parse.")
+        if max(self.end_ts[symbol] for symbol in symbols) > connect_to_db(AGGTRADES_VALIDATOR_DB_TS).get_collection(TS).find_one()[TS]:
+            LOG.info("No more trades to parse.")
             raise NoMoreParseableTrades("No more trades to parse.")
 
     def insert_in_db(self):
-        for symbol in self._symbols:
-            if data := [asdict(v) for v in self.ts_data[symbol].values()]:
-                connect_to_db(self.db_name).get_collection(symbol).insert_many(data)
+        for symbol in self.symbols:
+            connect_to_db(self.db_name).get_collection(symbol).insert_many([asdict(v) for v in self.ts_data[symbol].values()])
             time.sleep(0.1)  # Multiple connections socket saturation delay.
-
-        delete_db(self.validator_db)
-        connect_to_db(self.validator_db).get_collection(TS).insert_one({TS: self.end_ts})
 
 
 class FundTimeframeTrade(Trade):
-    def __init__(self, start_ts=None):
+    def __init__(self, start_ts: Optional[int] = None):
         from data_handling.data_helpers.data_staging import coin_ratio_marketcap
         from data_handling.data_helpers.vars_constants import SP500_SYMBOLS_USDT_PAIRS
         from MongoDB.db_actions import query_db_col_between
@@ -198,16 +206,15 @@ class FundTimeframeTrade(Trade):
         super().__init__(SP500_SYMBOLS_USDT_PAIRS)
 
         self.db_name = FUND_DB
-        self.validator_db = FUND_DB + "_timestamp_validator_db"
-        self.init_start_ts(start_ts, self.db_name, self.validator_db)
-
+        self.start_ts = query_db_col_timestamp_endpoint(self.db_name, self.db_name, True) + 1000 if not start_ts else start_ts
         self.end_ts = self.start_ts + self.timeframe
+
         if self.end_ts > connect_to_db(AGGTRADES_VALIDATOR_DB_TS).get_collection(TS).find_one()[TS]:
             LOG.error("No more trades to parse.")
             raise NoMoreParseableTrades("No more trades to parse.")
 
         for symbol in SP500_SYMBOLS_USDT_PAIRS:
-            self.add_trades(symbol, query_db_col_between(PARSED_AGGTRADES_DB, symbol, self.start_ts, self.end_ts))
+            self.add_trades(symbol, query_db_col_between(PARSED_AGGTRADES_DB, symbol, self.start_ts, self.end_ts).trades)
 
         self.ratios, self.fund_marketcap = coin_ratio_marketcap()
 
@@ -217,11 +224,7 @@ class FundTimeframeTrade(Trade):
         for marketcap_data in self.tf_marketcap_quantity.values():
             tf_marketcap_quantity_as_list.append({TS: marketcap_data.timestamp, MARKETCAP: marketcap_data.price,
                                                   QUANTITY: marketcap_data.quantity})
-
         insert_many_same_db_col(self.db_name, tf_marketcap_quantity_as_list)
-
-        delete_db(self.validator_db)
-        connect_to_db(self.validator_db).get_collection(TS).insert_one({TS: self.end_ts})
 
     def parse_trades(self):
         tf_range_to_parse = range(self.start_ts, self.end_ts, self.ms_parse_interval)
@@ -230,7 +233,7 @@ class FundTimeframeTrade(Trade):
         for tf in range(self.start_ts, self.end_ts, self.ms_parse_interval):
             volume_traded, current_marketcap = 0, 0
 
-            for symbol in self._symbols:
+            for symbol in self.symbols:
                 try:
                     tf_trade = self.ts_data[symbol][tf]
                     current_marketcap += tf_trade.price * self.ratios[DEFAULT_SYMBOL_SEARCH][MARKETCAP] / self.ratios[DEFAULT_SYMBOL_SEARCH][PRICE]

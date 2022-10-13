@@ -1,10 +1,7 @@
 import contextlib
 import logging
-
 import pymongo
 from pymongo import MongoClient
-from pymongo.errors import ServerSelectionTimeoutError
-
 import logs
 from data_handling.data_helpers.data_staging import round_last_ten_secs, get_current_second_in_ms, remove_none_values
 from data_handling.data_helpers.vars_constants import TS, MongoDB
@@ -12,6 +9,7 @@ from data_handling.data_helpers.vars_constants import TS, MongoDB
 trades_chart = '{}_trades_chart'
 localhost = 'localhost:27017/'
 base_mongo_conn_string = f'mongodb://{localhost}'
+mongo_client = MongoClient(f'{base_mongo_conn_string}')
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -20,21 +18,6 @@ class EmptyInitDB(Exception): pass
 class InvalidDataProvided(Exception): pass
 class InvalidArgumentsProvided(Exception): pass
 class EmptyCollectionInDB(Exception): pass
-
-
-mongo_client = MongoClient(f'{base_mongo_conn_string}')
-
-
-try:
-    LOG.info("Querying MongoDB to check if DB is available.")
-    mongo_client.list_database_names()
-except ServerSelectionTimeoutError as e:
-    if (localhost and 'Connection refused') in e.args[0]:
-        LOG.exception("Cannot connect to localhosts mongo DB.")
-        raise
-    else:
-        LOG.exception("Unexpected error while trying to connect to MongoDB.")
-        raise
 
 
 def list_dbs():
@@ -49,8 +32,8 @@ def db_col_names(db_name):
     return connect_to_db(db_name).list_collection_names()
 
 
-def insert_many_db(db, col, data) -> None:
-    connect_to_db(db).get_collection(col).insert_many(data)
+def insert_many_db(db, col, data):
+    return connect_to_db(db).get_collection(col).insert_many(data)
 
 
 def insert_one_db(db, col, data) -> None:
@@ -77,6 +60,7 @@ def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=
     if query_val := list(connect_to_db(db_name).get_collection(col).find({
         MongoDB.AND: [{column_name: {MongoDB.HIGHER_EQ: highereq}},
                       {column_name: {MongoDB.LOWER_EQ: lowereq}}]}).sort(column_name, sort_value).limit(limit)):
+
         return TradeData(**query_val[0]) if limit == 1 else TradeData(**query_val[0]) if limit == 1 else \
             TradesGroup(**{'trades': {elem['timestamp']: TradeData(**elem) for elem in query_val},
                            'start_ts': highereq, 'end_ts': lowereq})
@@ -84,15 +68,20 @@ def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=
     return None
 
 
-def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool):
+def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool, ignore_empty=False):
     def query_endpoint(db_name, collection, sort_val):
         if endpoint := query_db_col_between(db_name, collection, 0, get_current_second_in_ms(), limit=1, sort_value=sort_val):
             return endpoint.timestamp
+        elif ignore_empty:
+            return None
         else:
-            raise EmptyCollectionInDB(f"DB with name '{db_name}' and collection '{collection}' contains no values.")
+            raise EmptyCollectionInDB(("DB with name '{0}' and collection '{0}' contains no values.").format(db_name, collection))
 
-    endpoints = [query_endpoint(db_name, collection, pymongo.DESCENDING), query_endpoint(db_name, collection, pymongo.ASCENDING)]
-    return max(endpoints) if most_recent else min(endpoints)
+    endpoint_1, endpoint_2 = query_endpoint(db_name, collection, pymongo.DESCENDING), query_endpoint(db_name, collection, pymongo.ASCENDING)
+    if (endpoint_1 and endpoint_2):
+        return max(endpoint_1, endpoint_2) if most_recent else min(endpoint_1, endpoint_2)
+
+    return None
 
 
 def query_starting_ts(db_name, collection, init_db=None):

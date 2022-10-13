@@ -21,7 +21,7 @@ def parse_fund_trades_ten_seconds():
             LOG.info(f"Parsed symbol pairs from {datetime.fromtimestamp(fund_data.start_ts / 1000)} to "
                      f"{datetime.fromtimestamp((fund_data.start_ts + fund_data.timeframe) / 1000)}.")
 
-            fund_data = FundTimeframeTrade((fund_data.start_ts + fund_data.timeframe))
+            fund_data = FundTimeframeTrade(fund_data.start_ts + fund_data.timeframe)
     except NoMoreParseableTrades:
         LOG.info("Finished parsing fund ten seconds trades, sleeping for now.")
         time.sleep(60)
