@@ -24,21 +24,18 @@ def round_last_ten_secs(timestamp):
 
 
 def coin_ratio_marketcap():
-    fund_marketcap = 0
-    symbols_price_weight_marketcap, coin_ratio = {}, {}
-    sp500_symbols = {symbol: re.match('(^(.+?)USDT)', symbol).groups()[1].lower() for symbol in SP500_SYMBOLS_USDT_PAIRS}
+    symbols_price_weight_marketcap = {}
+    fund_match_uppercase_usdt_symbols = {symbol: re.match('(^(.+?)USDT)', symbol).groups()[1].lower() for symbol in SP500_SYMBOLS_USDT_PAIRS}
     for symbol_data in requests.get(coingecko_marketcap_api_link).json():
         try:
-            symbol_key = [k for k, symbol in sp500_symbols.items() if symbol == symbol_data['symbol']][0]
+            symbol_key = [uppercase_usdt_symbol for uppercase_usdt_symbol, symbol in fund_match_uppercase_usdt_symbols.items() if symbol == symbol_data['symbol']][0]
         except IndexError:
             continue
         symbols_price_weight_marketcap[symbol_key] = {"price": symbol_data['current_price'],
                                                       "price_weight": symbol_data['market_cap'] / symbol_data['current_price'],
                                                       "marketcap": symbol_data['market_cap']}
 
-        fund_marketcap += symbol_data['market_cap']
-
-    return symbols_price_weight_marketcap, fund_marketcap
+    return symbols_price_weight_marketcap
 
 
 def remove_none_values(object: dict):

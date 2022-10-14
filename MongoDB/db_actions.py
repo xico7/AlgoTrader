@@ -87,7 +87,7 @@ def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool, igno
 def query_starting_ts(db_name, collection, init_db=None):
     try:
         return query_db_col_timestamp_endpoint(db_name, collection, most_recent=False)
-    except EmptyCollectionInDB:
+    except EmptyCollectionInDB as e:
         if init_db:
             with contextlib.suppress(EmptyCollectionInDB):
                 return round_last_ten_secs(query_db_col_timestamp_endpoint(init_db, collection, False))
@@ -115,7 +115,10 @@ def create_index_db_cols(db, field) -> None:
 # create_index_db_cols('parsed_aggtrades', 'ID')
 #create_index_db_cols('parsed_aggtrades', 'timestamp')
 
-
+#Tests:
+#print("here")
+#query_starting_ts('parsed_aggtrades', 'adausdt')
+#insert_one_db('end_timestamp_aggtrades_validator_db', 'timestamp', {'timestamp': 1640955601009})
 #delete_all_text_dbs("time")
 
 

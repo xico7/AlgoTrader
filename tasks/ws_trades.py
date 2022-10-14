@@ -8,12 +8,11 @@ import logs
 from MongoDB.db_actions import connect_to_db
 from data_handling.data_func import CacheAggtrades
 from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols
-
+# TODO: e falta no ws_trades meter o start_db timestamp..
 # TODO: implement coingecko verification symbols for marketcap, how?
 # TODO: implement coingecko refresh 24h.
 from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
-from data_handling.data_helpers.vars_constants import THIRTY_MINS_IN_MS, AGGTRADE_PYCACHE, TS, \
-    AGGTRADES_VALIDATOR_DB_TS, ONE_SECONDS_IN_MS
+from data_handling.data_helpers.vars_constants import THIRTY_MINS_IN_MS, AGGTRADE_PYCACHE, TS, END_TS_AGGTRADES_VALIDATOR_DB, ONE_SECONDS_IN_MS
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -22,7 +21,7 @@ class QueueOverflow(Exception): pass
 
 
 def execute_past_trades():
-    if base_start_ts := connect_to_db(AGGTRADES_VALIDATOR_DB_TS).get_collection(TS).find_one():
+    if base_start_ts := connect_to_db(END_TS_AGGTRADES_VALIDATOR_DB).get_collection(TS).find_one():
         start_ts = base_start_ts[TS]
     else:
         start_ts = 1640955600000  # 31 December 2021

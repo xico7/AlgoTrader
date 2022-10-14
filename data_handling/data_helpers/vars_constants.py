@@ -8,10 +8,12 @@ DEFAULT_TIMEFRAME_IN_MS = ONE_HOUR_IN_MS
 DEFAULT_COL_SEARCH = 'BTCUSDT'
 
 FUND_DB = "10_seconds_fund_data"
+FUND_DB_COL = "fund_data"
 PARSED_TRADES_BASE_DB = "10_seconds_parsed_trades"
 PARSED_AGGTRADES_DB = "parsed_aggtrades"
 AGGTRADES_DB = "aggtrades"
-AGGTRADES_VALIDATOR_DB_TS = "end_timestamp_aggtrades_validator_db"
+END_TS_AGGTRADES_VALIDATOR_DB = "end_timestamp_aggtrades_validator_db"
+START_TS_AGGTRADES_VALIDATOR_DB = "start_timestamp_aggtrades_validator_db"
 
 
 SP500_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT',
@@ -51,7 +53,7 @@ ONE_MIN_IN_MS = int(str(ONE_MIN_IN_SECS) + SECONDS_TO_MS_APPEND)
 TEN_MIN_IN_MS = ONE_MIN_IN_MS * 10
 THIRTY_MINS_IN_MS = TEN_MIN_IN_MS * 3
 
-TEN_SECS_MS = int(str(TEN_SECONDS) + SECONDS_TO_MS_APPEND)
+TEN_SECS_MS = 10000
 FIVE_SECS_IN_MS = 5000
 ONE_SECONDS_IN_MS = 1000
 #
