@@ -18,7 +18,7 @@ def parse_fund_trades_ten_seconds():
             fund_data.parse_trades()
             fund_data.insert_in_db()
 
-            LOG.info(f"Parsed symbol pairs from {datetime.fromtimestamp(fund_data.start_ts / 1000)} to "
+            LOG.info(f"Parsed fund trades from {datetime.fromtimestamp(fund_data.start_ts / 1000)} to "
                      f"{datetime.fromtimestamp((fund_data.start_ts + fund_data.timeframe) / 1000)}.")
 
             fund_data = FundTimeframeTrade(fund_data.start_ts + fund_data.timeframe, ratio=fund_data.ratios)

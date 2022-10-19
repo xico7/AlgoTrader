@@ -4,7 +4,7 @@ import pymongo
 from pymongo import MongoClient
 import logs
 from data_handling.data_helpers.data_staging import round_last_ten_secs, get_current_second_in_ms, remove_none_values
-from data_handling.data_helpers.vars_constants import TS, MongoDB
+from data_handling.data_helpers.vars_constants import TS, MongoDB, START_TS
 
 trades_chart = '{}_trades_chart'
 localhost = 'localhost:27017/'
@@ -45,16 +45,26 @@ def insert_many_same_db_col(db, data) -> None:
 
 
 def aggregate_symbol_filled_data(db_name, start_ts, end_ts, symbol, column_name=TS, limit=0, sort_value=pymongo.DESCENDING):
-    return query_db_col_between(db_name, symbol, start_ts, end_ts, column_name, limit, sort_value).fill_trades_tf(start_ts, end_ts)
+    return query_trade_db_col_between(db_name, symbol, start_ts, end_ts, column_name, limit, sort_value).fill_trades_tf(start_ts, end_ts)
 
 
 def aggregate_symbols_filled_data(db_name, start_ts, end_ts, column_name=TS, limit=0, sort_value=pymongo.DESCENDING):
-    trade_data = remove_none_values({symbol: query_db_col_between(db_name, symbol, start_ts, end_ts, column_name, limit, sort_value)
+    trade_data = remove_none_values({symbol: query_trade_db_col_between(db_name, symbol, start_ts, end_ts, column_name, limit, sort_value)
                                      for symbol in db_col_names(db_name)})
     return {symbol: trade_group.fill_trades_tf(start_ts, end_ts) for symbol, trade_group in trade_data.items()}
 
 
-def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=0, sort_value=pymongo.DESCENDING) -> [dict, list]:
+def query_chart_db_col_between(db_name, col, highereq, lowereq, column_name=START_TS, limit=0, sort_value=pymongo.DESCENDING) -> [dict, list]:
+    if query_val := list(connect_to_db(db_name).get_collection(col).find({
+        MongoDB.AND: [{column_name: {MongoDB.HIGHER_EQ: highereq}},
+                      {column_name: {MongoDB.LOWER_EQ: lowereq}}]}).sort(column_name, sort_value).limit(limit)):
+
+        return query_val[0] if limit == 1 else query_val
+
+    return None
+
+
+def query_trade_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=0, sort_value=pymongo.DESCENDING) -> [dict, list]:
     from data_handling.data_func import TradeData
     from data_handling.data_func import TradesGroup
     if query_val := list(connect_to_db(db_name).get_collection(col).find({
@@ -68,12 +78,22 @@ def query_db_col_between(db_name, col, highereq, lowereq, column_name=TS, limit=
     return None
 
 
-def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool, ignore_empty=False):
+def query_chart_endpoint_ts(db_name, collection, most_recent: bool, init_db=None):
+    try:
+        return query_chart_ts_endpoint(db_name, collection, most_recent=most_recent)
+    except EmptyCollectionInDB as e:
+        if init_db:
+            with contextlib.suppress(EmptyCollectionInDB):
+                return round_last_ten_secs(query_chart_ts_endpoint(init_db, collection, False))
+
+        raise InvalidDataProvided(f"symbol '{collection}' doesn't have a valid timestamp in db "
+                                  f"'{db_name}' and no other db to initialize from.") from e
+
+
+def query_chart_ts_endpoint(db_name, collection, most_recent: bool, column_name=START_TS):
     def query_endpoint(db_name, collection, sort_val):
-        if endpoint := query_db_col_between(db_name, collection, 0, get_current_second_in_ms(), limit=1, sort_value=sort_val):
-            return endpoint.timestamp
-        elif ignore_empty:
-            return None
+        if endpoint := query_chart_db_col_between(db_name, collection, 0, get_current_second_in_ms(), column_name=column_name, limit=1, sort_value=sort_val):
+            return endpoint[START_TS]
         else:
             raise EmptyCollectionInDB(("DB with name '{0}' and collection '{0}' contains no values.").format(db_name, collection))
 
@@ -84,9 +104,33 @@ def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool, igno
     return None
 
 
-def query_starting_ts(db_name, collection, init_db=None):
+def query_db_col_timestamp_endpoint(db_name, collection, most_recent: bool, column_name=TS, ignore_empty=False):
+    def query_trade_endpoint(db_name, collection, sort_val):
+        if endpoint := query_trade_db_col_between(db_name, collection, 0, get_current_second_in_ms(), column_name=column_name, limit=1, sort_value=sort_val):
+            return endpoint.timestamp
+        elif ignore_empty:
+            return None
+        else:
+            raise EmptyCollectionInDB(("DB with name '{0}' and collection '{0}' contains no values.").format(db_name, collection))
+
+    endpoint_1, endpoint_2 = query_trade_endpoint(db_name, collection, pymongo.DESCENDING), query_trade_endpoint(db_name, collection, pymongo.ASCENDING)
+    if (endpoint_1 and endpoint_2):
+        return max(endpoint_1, endpoint_2) if most_recent else min(endpoint_1, endpoint_2)
+
+    return None
+
+
+def query_init_starting_ts(db_name, collection, init_db=None, column_name=TS, trade: bool = True):
+    return query_init_endpoint_ts(db_name, collection, False, column_name=column_name, init_db=init_db)
+
+
+def query_init_end_ts(db_name, collection, init_db=None):
+    return query_init_endpoint_ts(db_name, collection, True, init_db=init_db)
+
+
+def query_init_endpoint_ts(db_name, collection, most_recent: bool, column_name=TS, init_db=None):
     try:
-        return query_db_col_timestamp_endpoint(db_name, collection, most_recent=False)
+        return query_db_col_timestamp_endpoint(db_name, collection, column_name=column_name, most_recent=most_recent)
     except EmptyCollectionInDB as e:
         if init_db:
             with contextlib.suppress(EmptyCollectionInDB):

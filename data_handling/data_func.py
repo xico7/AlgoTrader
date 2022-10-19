@@ -5,7 +5,7 @@ from typing import Optional, List, Dict
 import logs
 from support.decorators_extenders import init_only_existing
 from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, SYMBOL, TS, DEFAULT_PARSE_INTERVAL, \
-    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, FUND_DB, MARKETCAP, AGGTRADES_DB, DEFAULT_TIMEFRAME_IN_MS, \
+    PARSED_TRADES_BASE_DB, PARSED_AGGTRADES_DB, MARKETCAP, AGGTRADES_DB, DEFAULT_TIMEFRAME_IN_MS, \
     END_TS_AGGTRADES_VALIDATOR_DB, DEFAULT_PARSE_INTERVAL_IN_MS, TEN_SECS_MS, FUND_DB_COL, START_TS_AGGTRADES_VALIDATOR_DB
 from dataclasses import dataclass, asdict, field
 from MongoDB.db_actions import insert_many_same_db_col, connect_to_db, insert_many_db, delete_db, query_db_col_timestamp_endpoint
@@ -201,16 +201,16 @@ class FundTimeframeTrade(Trade):
     def __init__(self, start_ts: Optional[int] = None, ratio: dict = None):
         from data_handling.data_helpers.data_staging import coin_ratio_marketcap
         from data_handling.data_helpers.vars_constants import SP500_SYMBOLS_USDT_PAIRS
-        from MongoDB.db_actions import query_db_col_between
+        from MongoDB.db_actions import query_trade_db_col_between
 
         super().__init__(SP500_SYMBOLS_USDT_PAIRS)
 
         if start_ts:
             self.start_ts = start_ts
-        elif endpoint := query_db_col_timestamp_endpoint(FUND_DB, FUND_DB_COL, most_recent=True, ignore_empty=True):
+        elif endpoint := query_db_col_timestamp_endpoint(self.db_name, FUND_DB_COL, most_recent=True, ignore_empty=True):
             self.start_ts = endpoint + TEN_SECS_MS
         else:
-            self.start_ts = connect_to_db(START_TS_AGGTRADES_VALIDATOR_DB).get_collection(TS).find_one()[TS]
+            self.start_ts = round_last_ten_secs(connect_to_db(START_TS_AGGTRADES_VALIDATOR_DB).get_collection(TS).find_one()[TS])
 
         self.end_ts = self.start_ts + self.timeframe
         self.tf_marketcap_quantity = {}
@@ -220,7 +220,7 @@ class FundTimeframeTrade(Trade):
             raise NoMoreParseableTrades("No more trades to parse.")
 
         for symbol in SP500_SYMBOLS_USDT_PAIRS:
-            self.add_trades(symbol, query_db_col_between(PARSED_AGGTRADES_DB, symbol, self.start_ts, self.end_ts).trades)
+            self.add_trades(symbol, query_trade_db_col_between(PARSED_AGGTRADES_DB, symbol, self.start_ts, self.end_ts).trades)
 
         self.ratios = coin_ratio_marketcap() if not ratio else ratio
 

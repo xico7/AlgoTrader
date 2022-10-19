@@ -6,8 +6,6 @@ DEFAULT_PARSE_INTERVAL = 10
 DEFAULT_PARSE_INTERVAL_IN_MS = DEFAULT_PARSE_INTERVAL * 1000
 DEFAULT_TIMEFRAME_IN_MS = ONE_HOUR_IN_MS
 DEFAULT_COL_SEARCH = 'BTCUSDT'
-
-FUND_DB = "10_seconds_fund_data"
 FUND_DB_COL = "fund_data"
 PARSED_TRADES_BASE_DB = "10_seconds_parsed_trades"
 PARSED_AGGTRADES_DB = "parsed_aggtrades"
@@ -29,6 +27,7 @@ SYMBOL = 'symbol'
 DEFAULT_SYMBOL_SEARCH = "BTCUSDT"
 MARKETCAP = 'marketcap'
 TS = "timestamp"
+START_TS = 'start_ts'
 PRICE = "price"
 QUANTITY = 'quantity'
 
