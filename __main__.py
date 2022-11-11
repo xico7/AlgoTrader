@@ -49,7 +49,6 @@ with tempfile.TemporaryDirectory(prefix="AlgoTrader") as dearchived_dir:
     sys.path.insert(0, str(Path(__file__).parent / venv))
     sys.path.insert(0, str(dearchived_dir / venv))
 
-
     # unlike the usual this import is the last thing to execute
     try:
         import main

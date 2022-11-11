@@ -1,22 +1,19 @@
-This program intends to create an algorithm which trades with profit in Binance crypto market, after deducting fees.
+This program intends to create an algorithm which trades with profit in Binance crypto market.
 
-The only part which is currently working is the data gathering and transformation through Binance API.
+Part one, data ETL from binance API is currently working, extracting aggtrades and transforming the data, inserting in a MongoDB database.
 
-In order to run this program you need MongoDB installed and running, you also need a binance api key and secret in /data_handling/data_helpers/secrets.py (BINANCE_API_KEY=XXXXX, BINANCE_API_SECRET=XXXXX).
+In order to run the program you need MongoDB installation.
 
-To insert all trades separated by each symbol in a MongoDB database run the program with the following arguments:
+You also need and a valid binance api key and secret in /data_handling/data_helpers/secrets.py as 
+BINANCE_API_KEY=XXXXX, BINANCE_API_SECRET=XXXXX
 
+To run the program it is recommended to package it, but you can also use the IDE with input arguments.
+
+To package the application go to the programs root dir and run:
 python3 ./package.py
 
 After this will you have the application zipped to one single executable file and you can run the data aggregators.
 
-python3 AlgoTrader.py ws-trades (gathers data from the past, it also contains a live data aggregators for later stages)
+python3 AlgoTrader.py save-aggtrades (gathers data from the past and inserts in MongoDB).
 
-python3 AlgoTrader.py parse-trades-fund ( transforms the data in a price/volume -> time relationship for all relevant symbols)
-python3 AlgoTrader.py parse-trades-ten-seconds ( transforms the data in a price/volume -> time relationship for the symbols which comprise the fund (more marketcap)).
-
-
-Next steps:
-
-transform_trade_data, uses the parsed data in a way to, for example, construct "graphical" information on how much a 
-symbol was traded in each price range for one day, and relate that with fund data to technical analysis a simple process.
+python3 AlgoTrader.py parse-trade-data ( Transforms the data in ten seconds timeframes with different statistical metrics.)

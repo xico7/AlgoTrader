@@ -3,7 +3,7 @@ import re
 import time
 from typing import Union, List
 
-from data_handling.data_helpers.vars_constants import USDT, BNB, TEN_SECS_MS, coingecko_marketcap_api_link, SP500_SYMBOLS_USDT_PAIRS
+from data_handling.data_helpers.vars_constants import USDT, BNB, TEN_SECS_MS, coingecko_marketcap_api_link, FUND_SYMBOLS_USDT_PAIRS
 
 
 def remove_usdt(symbols: Union[List[str], str]):
@@ -14,9 +14,24 @@ def get_current_second_in_ms():
     return int(time.time()) * 1000
 
 
+def seconds_to_ms(seconds):
+    seconds_in_ms = seconds * 1000
+    return int(seconds_in_ms) if isinstance(seconds_in_ms, int) else seconds_in_ms
+
+
 def mins_to_ms(minutes):
-    mins_in_ms = minutes * 60 * 1000
-    return int(mins_in_ms) if isinstance(minutes, int) else mins_in_ms
+    return seconds_to_ms(minutes) * 60
+
+
+def as_dict_without_keys(dict_object, do_not_parse_keys: list):
+    for v in dict_object.values():
+        for key in do_not_parse_keys:
+            del v[key]
+
+    return dict_object
+
+def current_time_in_ms(cur_time_in_secs: float):
+    return cur_time_in_secs * 1000
 
 
 def round_last_ten_secs(timestamp):
@@ -25,7 +40,7 @@ def round_last_ten_secs(timestamp):
 
 def coin_ratio_marketcap():
     symbols_price_weight_marketcap = {}
-    fund_match_uppercase_usdt_symbols = {symbol: re.match('(^(.+?)USDT)', symbol).groups()[1].lower() for symbol in SP500_SYMBOLS_USDT_PAIRS}
+    fund_match_uppercase_usdt_symbols = {symbol: re.match('(^(.+?)USDT)', symbol).groups()[1].lower() for symbol in FUND_SYMBOLS_USDT_PAIRS}
     for symbol_data in requests.get(coingecko_marketcap_api_link).json():
         try:
             symbol_key = [uppercase_usdt_symbol for uppercase_usdt_symbol, symbol in fund_match_uppercase_usdt_symbols.items() if symbol == symbol_data['symbol']][0]
@@ -47,5 +62,5 @@ def usdt_with_bnb_symbols() -> list:
     usdt_symbols = [symbol for symbol in all_symbols if USDT in symbol]
 
     return [symbol for symbol in usdt_symbols if symbol.replace(USDT, BNB) in all_symbols
-            or BNB + symbol.replace(USDT, '') in all_symbols or symbol == 'BNBUSDT']
+            or BNB + symbol.replace(USDT, '') in all_symbols or symbol == f'{BNB}{USDT}']
 

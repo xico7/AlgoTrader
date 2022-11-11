@@ -11,7 +11,7 @@ logs.setup_logs(verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, loggin
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
 
 
-def algo_argparse():
+def get_argparse_execute_functions():
     parent_parser = argparse.ArgumentParser(prog='Algotrading-Crypto', fromfile_prefix_chars='@')
     parent_parser.add_argument("-v", "--verbosity", default=0, action="count",
                                help="increase logging verbosity (up to 5)")
@@ -21,11 +21,10 @@ def algo_argparse():
     for element in pkgutil.iter_modules(tasks.__path__):
         subparser.add_parser(element.name.replace("_", "-"))
 
-    subparser.choices['transform-trade-data'].add_argument(f"--chart-minutes", type=int, required=True, help="Volume percentile data chart timeframe.")
-    return parent_parser.parse_args()
+    subparser.choices['transform-trade-data'].add_argument(f"--chart-minutes", type=int, required=False, help="Volume percentile data chart timeframe.")
 
+    parsed_args = vars(parent_parser.parse_args())
 
-def get_execute_functions(parsed_args):
     base_execute_module_name = parsed_args['command'].replace("-", "_")
     for task in pkgutil.iter_modules(tasks.__path__):
         if base_execute_module_name == task.name:
@@ -34,9 +33,9 @@ def get_execute_functions(parsed_args):
             module_objects = vars(getattr(__import__(execute_module_path), base_execute_module_name))
             execute_module_functions = [obj for obj in module_objects.values() if
                                         isfunction(obj) and obj.__module__ == execute_module_path]
-            execute_functions = {}
+            execute_functions = []
 
             for function in execute_module_functions:
-                execute_functions[function] = parsed_args if inspect.getfullargspec(function).args else None
+                execute_functions.append((function, parsed_args) if inspect.getfullargspec(function).args else (function, None))
 
             return execute_functions

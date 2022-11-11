@@ -1,36 +1,33 @@
 import logging
 import time
-
 import logs
-from datetime import datetime
-from data_handling.data_helpers.vars_constants import PARSED_AGGTRADES_DB
-from data_handling.data_func import SymbolsTimeframeTrade, NoMoreParseableTrades
-from MongoDB.db_actions import query_trade_db_col_between
+from data_handling.data_func import SymbolsTimeframeTrade, FundTimeframeTrade
+from data_handling.data_helpers.data_staging import coin_ratio_marketcap
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
 def parse_trades_ten_seconds():
+    coin_ratio = coin_ratio_marketcap()
+
+    parse_fund_data = None
+    parse_aggtrade = None
+
     LOG.info("Beginning to parse ten seconds trades.")
+    while True:
+        if not parse_fund_data:
+            parse_fund_data = FundTimeframeTrade(coin_ratio)
+        else:
+            parse_fund_data = FundTimeframeTrade(coin_ratio, parse_fund_data.end_ts)
 
-    try:
-        parse_aggtrade = None
-        while True:
-            if not parse_aggtrade:
-                parse_aggtrade = SymbolsTimeframeTrade()
-            for symbol in parse_aggtrade.symbols:
-                if symbol_trades := query_trade_db_col_between(PARSED_AGGTRADES_DB, symbol, parse_aggtrade.start_ts[symbol], parse_aggtrade.start_ts[symbol] + parse_aggtrade.timeframe):
-                    parse_aggtrade.add_trades(symbol, symbol_trades.trades)
+        if not parse_aggtrade:
+            parse_aggtrade = SymbolsTimeframeTrade()
+        else:
+            parse_aggtrade = SymbolsTimeframeTrade({symbol: parse_aggtrade.end_ts[symbol] for symbol in parse_aggtrade.symbols})
 
-            parse_aggtrade.insert_in_db()
-            LOG.info(f"Parsed 1 hour symbol pairs with a maximum end time of {datetime.fromtimestamp(max(parse_aggtrade.start_ts[symbol] for symbol in parse_aggtrade.symbols) / 1000)}.")
-            parse_aggtrade.start_ts = {symbol: parse_aggtrade.start_ts[symbol] + parse_aggtrade.timeframe for symbol in parse_aggtrade.symbols}
-            parse_aggtrade = SymbolsTimeframeTrade(parse_aggtrade.start_ts)
-    except NoMoreParseableTrades:
-        LOG.info("Finished parsing symbol pairs trades, sleeping for now.")
-        time.sleep(60)
-        parse_trades_ten_seconds()
-
-
-
-
+        if parse_fund_data.finished or parse_aggtrade.finished:
+            LOG.info("Finished parsing ten seconds trades, sleeping for one minute.")
+            time.sleep(60)
+        else:
+            parse_fund_data.parse_and_insert_trades()
+            parse_aggtrade.parse_and_insert_trades()

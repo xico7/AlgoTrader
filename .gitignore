@@ -17,3 +17,11 @@
 core_startup/__pycache__/*
 data_handling/__pycache__/*
 /data_handling/data_helpers/secrets.py
+/.idea/AlgoTrader.iml
+/.idea/misc.xml
+/.idea/.gitignore
+/.idea/AlgoTrader.iml
+/.idea/misc.xml
+/AlgoTrader.py
+/AlgoTrader.py.log
+/AlgoTrader.py.verbose.log
