@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import time
 from datetime import datetime
 from typing import Optional, List, Dict
 
@@ -63,13 +64,20 @@ class CacheTradeData(dict):
         self.cache_db = {symbol: {} for symbol in self.symbols}
 
     def append_update(self, trade_taindicator_data, remove_trades: bool):
-        cached_data = {symbol: dataclasses.asdict(trades) for symbol, trades in trade_taindicator_data.items()}
+        if remove_trades:
+            cached_data = {}
+            for symbol, trades in trade_taindicator_data.items():
+                save_trades = trades.trades
+                trades.trades = []
+                cached_data[symbol] = dataclasses.asdict(trades)
+                trades.trades = save_trades
+        else:
+            cached_data = {symbol: dataclasses.asdict(trades) for symbol, trades in trade_taindicator_data.items()}
+
         for symbol in self.symbols:
             self.cache_db[symbol].update({str(len(self) + 1): cached_data[symbol]})
 
-        #if len(self) >= TRADE_DATA_PYTHON_CACHE_SIZE:
-        if len(self) >= 5:
-
+        if len(self) >= TRADE_DATA_PYTHON_CACHE_SIZE:
             self.insert_in_db_clear(remove_trades)
         return self
 
@@ -234,6 +242,15 @@ class TradesTAIndicators:
                 self.range_price_volume[str(i + 1)] = {'volume_percentage': 0, 'sum_volume_percentage': 0}
             total_quantity = sum([tf.quantity for tf in self.trades])
 
+            k = time.time()
+            for trade in self.trades:
+                (trade.quantity / total_quantity) * 100
+            print(time.time() - k)
+
+            ll = time.time()
+            for trade in self .trades:
+                str(self.get_counter_factor_one_hundred(trade.price))
+            print(time.time() - ll)
             for trade in self.trades:
                 self.range_price_volume[str(self.get_counter_factor_one_hundred(trade.price))]['volume_percentage'] += (trade.quantity / total_quantity) * 100
 
@@ -266,7 +283,6 @@ class TradesTAIndicators:
         self.end_ts += DEFAULT_PARSE_INTERVAL_IN_MS
         del self.trades[0]
         self.trades.append(trade_to_add)
-
         return TradesTAIndicators(**{'start_ts': self.start_ts, 'end_ts': self.end_ts, 'trades': self.trades})
 
 
@@ -321,7 +337,7 @@ class Trade:
 
 class SymbolsTimeframeTrade(Trade):
     def __init__(self, start_ts: Dict[str, int] = None):
-        symbols = DB(PARSED_AGGTRADES_DB).list_collection_names()
+        symbols = DB(PARSED_AGGTRADES_DB).list_collection_names() if not start_ts else list(start_ts.keys())
         super().__init__(symbols)
 
         if start_ts:
@@ -383,11 +399,10 @@ class FundTimeframeTrade(Trade):
             for symbol in self.symbols:
                 try:
                     tf_trade = self.ts_data[symbol][tf]
+                    current_marketcap += tf_trade.price * self.ratios[symbol][MARKETCAP] / self.ratios[symbol][PRICE]
+                    volume_traded += tf_trade.price * tf_trade.quantity
                 except KeyError:
                     continue
-
-                current_marketcap += tf_trade.price * self.ratios[symbol][MARKETCAP] / self.ratios[symbol][PRICE]
-                volume_traded += tf_trade.price * tf_trade.quantity
 
             self.tf_marketcap_quantity.append({TS: tf, MARKETCAP: current_marketcap, QUANTITY: volume_traded})
 

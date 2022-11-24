@@ -25,6 +25,9 @@ def get_argparse_execute_functions():
 
     parsed_args = vars(parent_parser.parse_args())
 
+    if not parsed_args['command']:
+        return
+
     base_execute_module_name = parsed_args['command'].replace("-", "_")
     for task in pkgutil.iter_modules(tasks.__path__):
         if base_execute_module_name == task.name:

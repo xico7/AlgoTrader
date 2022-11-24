@@ -1,10 +1,9 @@
 import logging
 import logs
-from data_handling.data_func import get_trade_data_group, CacheTradeData, TradesTAIndicators, TradeData
+from data_handling.data_func import get_trade_data_group, CacheTradeData
 from data_handling.data_helpers.vars_constants import DEFAULT_SYMBOL_SEARCH, TEN_SECS_PARSED_TRADES_DB, \
     TRADE_DATA_CACHE_TIME_IN_MS, UNUSED_CHART_TRADE_SYMBOLS, TEN_SECS_MS
-from MongoDB.db_actions import trades_chart, ten_seconds_symbols_filled_data, DB, ValidatorDB, DBCol, \
-    trades_chart_base_db, ATOMIC_TIMEFRAME_CHART_TRADES
+from MongoDB.db_actions import trades_chart, ten_seconds_symbols_filled_data, DB, ValidatorDB, ATOMIC_TIMEFRAME_CHART_TRADES
 from data_handling.data_helpers.data_staging import mins_to_ms
 
 
@@ -29,7 +28,6 @@ def transform_trade_data(args):
                 LOG.error(f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry.")
     else:
         end_ts = start_ts + mins_to_ms(args['chart_minutes'])
-        remove_trades = True if args['chart_minutes'] > 5 else False
 
         symbols_timeframe_trades = ten_seconds_symbols_filled_data(chart_filtered_symbols, start_ts, end_ts)
         cache_future_trades = get_trade_data_group(chart_filtered_symbols, end_ts + TEN_SECS_MS,
@@ -40,9 +38,10 @@ def transform_trade_data(args):
                 symbols_timeframe_trades[symbol] += getattr(cache_future_trades, symbol)[0]
 
             cache_future_trades.del_update_cache(chart_filtered_symbols)
-            cache_db_insert.append_update(symbols_timeframe_trades, remove_trades)
+            cache_db_insert.append_update(symbols_timeframe_trades, True if args['chart_minutes'] > 5 else False)
 
-    LOG.info("Finished parsing trade data.")
+        LOG.info("Finished parsing trade data, sleeping for a while then starting again.")
+        transform_trade_data(args)
 
     # else:
     #     if not (start_ts := ValidatorDB(chart_tf_db).end_ts) and not (start_ts := ValidatorDB(trades_chart_base_db).start_ts):

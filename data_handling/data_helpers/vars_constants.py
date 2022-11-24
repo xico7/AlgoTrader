@@ -1,4 +1,9 @@
 ## Config variables, variables that can change how the program behaves are inserted here.
+from binance import Client
+from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
+
+binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
+
 
 AGGTRADE_PYCACHE = 1000
 ONE_HOUR_IN_MS = 60 * 60 * 1000
@@ -20,11 +25,15 @@ START_TS_AGGTRADES_VALIDATOR_DB = "start_timestamp_aggtrades_validator_db"
 TRADE_DATA_PYTHON_CACHE_SIZE = 30
 TRADE_DATA_CACHE_TIME_IN_MS = 60 * 60 * 1000
 
-UNUSED_CHART_TRADE_SYMBOLS = ['USDTNGN', 'USDPUSDT', 'WNXMUSDT', 'LOKAUSDT', 'POWRUSDT', 'API3USDT',
-                              'IMXUSDT']  # Some symbols stop being traded in Binance.
 
+DEEMED_UNTRADEABLE_SYMBOLS = ['USDTIDRT', 'USDTTRY', 'BUSDUSDT', 'USDTRUB', 'USDTBRL', 'USTUSDT',
+                              'BNBUSDT', 'TUSDUSDT']  # Symbols that i don't consider tradeable for various reasons.
+NO_LONGER_TRADED_BINANCE_SYMBOLS = ['USDTNGN', 'USDPUSDT', 'WNXMUSDT', 'LOKAUSDT', 'POWRUSDT', 'API3USDT', 'LOKAUSDT',
+                              'IMXUSDT', 'ANCUSDT']  # Some symbols stop being traded in Binance.
+
+UNUSED_CHART_TRADE_SYMBOLS = NO_LONGER_TRADED_BINANCE_SYMBOLS + DEEMED_UNTRADEABLE_SYMBOLS
 FUND_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'DOGEUSDT',
-                           'AVAXUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'ALGOUSDT']
+                           'AVAXUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'ALGOUSDT', 'IMXUSDT', 'GLMRUSDT']
 
 
 ## Program constants, variables that contain 'static' values that are used in one or more modules.

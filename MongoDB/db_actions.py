@@ -153,11 +153,11 @@ def delete_all_text_dbs(text) -> None:
 
 #delete_all_text_dbs("chart")
 
-def create_index_db_cols(db, field) -> None:
-    db_conn = DB(db)
-    for col in db_conn.list_collection_names():
-        db_conn.__getattr__(col).create_index([(field, -1)])
-        print(f"Created index for collection {col}.")
+# def create_index_db_cols(db, field) -> None:
+#     db_conn = DB(db)
+#     for col in db_conn.list_collection_names():
+#         db_conn.__getattr__(col).create_index([(field, -1)])
+#         print(f"Created index for collection {col}.")
 #
 #
 # create_index_db_cols('parsed_aggtrades', 'ID')
