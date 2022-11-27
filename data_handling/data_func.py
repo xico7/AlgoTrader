@@ -1,15 +1,13 @@
 import dataclasses
 import logging
-import time
 from datetime import datetime
 from typing import Optional, List, Dict
 
 import logs
 from support.decorators_extenders import init_only_existing
-from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, TS, DEFAULT_PARSE_INTERVAL, \
+from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, TS, DEFAULT_PARSE_INTERVAL, UNUSED_CHART_TRADE_SYMBOLS, \
     TEN_SECS_PARSED_TRADES_DB, PARSED_AGGTRADES_DB, MARKETCAP, DEFAULT_TIMEFRAME_IN_MS, \
-    END_TS_AGGTRADES_VALIDATOR_DB, DEFAULT_PARSE_INTERVAL_IN_MS, TEN_SECS_MS, FUND_COL, \
-    START_TS_AGGTRADES_VALIDATOR_DB, TRADE_DATA_CACHE_TIME_IN_MS, DEFAULT_SYMBOL_SEARCH, TRADE_DATA_PYTHON_CACHE_SIZE
+    END_TS_AGGTRADES_VALIDATOR_DB, DEFAULT_PARSE_INTERVAL_IN_MS, TEN_SECS_MS, FUND_COL, START_TS_AGGTRADES_VALIDATOR_DB, TRADE_DATA_CACHE_TIME_IN_MS, DEFAULT_SYMBOL_SEARCH, TRADE_DATA_PYTHON_CACHE_SIZE
 from dataclasses import dataclass, asdict
 from MongoDB.db_actions import DB, DBCol, ValidatorDB
 from data_handling.data_helpers.data_staging import round_last_ten_secs, as_dict_without_keys
@@ -242,17 +240,11 @@ class TradesTAIndicators:
                 self.range_price_volume[str(i + 1)] = {'volume_percentage': 0, 'sum_volume_percentage': 0}
             total_quantity = sum([tf.quantity for tf in self.trades])
 
-            k = time.time()
-            for trade in self.trades:
-                (trade.quantity / total_quantity) * 100
-            print(time.time() - k)
+            ratio = 100 / total_quantity
 
-            ll = time.time()
-            for trade in self .trades:
-                str(self.get_counter_factor_one_hundred(trade.price))
-            print(time.time() - ll)
             for trade in self.trades:
-                self.range_price_volume[str(self.get_counter_factor_one_hundred(trade.price))]['volume_percentage'] += (trade.quantity / total_quantity) * 100
+                if trade.quantity:
+                    self.range_price_volume[str(self.get_counter_factor_one_hundred(trade.price))]['volume_percentage'] += (trade.quantity * ratio)
 
             sum_quantity_percentage = 0
             for range_price in self.range_price_volume.values():
@@ -337,7 +329,8 @@ class Trade:
 
 class SymbolsTimeframeTrade(Trade):
     def __init__(self, start_ts: Dict[str, int] = None):
-        symbols = DB(PARSED_AGGTRADES_DB).list_collection_names() if not start_ts else list(start_ts.keys())
+        symb = DB(PARSED_AGGTRADES_DB).list_collection_names() if not start_ts else list(start_ts.keys())
+        symbols = set(symb) - set(UNUSED_CHART_TRADE_SYMBOLS)
         super().__init__(symbols)
 
         if start_ts:
@@ -363,9 +356,9 @@ class SymbolsTimeframeTrade(Trade):
         validator_db = ValidatorDB(TEN_SECS_PARSED_TRADES_DB)
         if not validator_db.start_ts:
             validator_db.set_start_ts(min([self.start_ts[symbol] for symbol in self.symbols]))
-        validator_db.set_end_ts(min([self.end_ts[symbol] for symbol in self.symbols]))
+        validator_db.set_end_ts(max([self.end_ts[symbol] for symbol in self.symbols]))
 
-        LOG.info(f"Parsed 1 hour symbol pairs with a maximum end time of "
+        LOG.info(f"Parsed 1 hour symbol pairs with a maximum start time of "
                  f"{datetime.fromtimestamp(max(self.start_ts[symbol] for symbol in self.symbols) / 1000)}.")
 
 

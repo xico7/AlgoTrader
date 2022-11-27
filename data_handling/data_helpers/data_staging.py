@@ -23,12 +23,13 @@ def mins_to_ms(minutes):
     return seconds_to_ms(minutes) * 60
 
 
-def as_dict_without_keys(dict_object, do_not_parse_keys: list):
-    for v in dict_object.values():
+def as_dict_without_keys(dict_of_dicts_obj, do_not_parse_keys: list):
+    for v in dict_of_dicts_obj.values():
         for key in do_not_parse_keys:
-            del v[key]
+            if key in v:
+                del v[key]
 
-    return dict_object
+    return dict_of_dicts_obj
 
 def current_time_in_ms(cur_time_in_secs: float):
     return cur_time_in_secs * 1000

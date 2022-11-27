@@ -24,7 +24,7 @@ TOO_BIG_UNUSED_SYMBOLS = ['BTCUSDT', 'ETHUSDT']
 def execute_alpha_algo():
     def test_alpha():
         #  Lowest range percentage considered for coin to be traded, i would say 8% in last 24Hours, 1.5% in last 2 Hours
-        #  Lowest range percentage considered for fund data to be relevant, i would say 8% in last 24Hours, 2% in last 2 Hours
+        #  Lowest range percentage considered for fund data to be relevant, i would say 6% in last 24Hours, 1.5% in last 2 Hours
         pass
 
 
@@ -69,13 +69,11 @@ def execute_alpha_algo():
     def range_percentages(timeframe_in_mins):
         chart_tf_db = trades_chart.format(timeframe_in_mins)
 
-        start_ts = 1641131210000
+        start_ts = ValidatorDB(chart_tf_db).start_ts
         dif_price_range = 0
         save_start_ts = 0
         # for symbol in DB(chart_tf_db).list_collection_names():
-        for i, symbol_chart in enumerate(DBCol(chart_tf_db, "fund_data").column_between(start_ts, start_ts + ONE_DAY_IN_MS * 2, 'start_ts')):
-            if not symbol_chart['start_ts'] == save_start_ts + TEN_SECS_MS:
-                print("here", i)
+        for i, symbol_chart in enumerate(DBCol(chart_tf_db, "fund_data").column_between(start_ts, start_ts + ONE_DAY_IN_MS / 12, 'start_ts')):
             save_start_ts = symbol_chart['start_ts']
 
             if dif_price_range != symbol_chart['price_range_percentage']:

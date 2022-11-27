@@ -29,7 +29,7 @@ TRADE_DATA_CACHE_TIME_IN_MS = 60 * 60 * 1000
 DEEMED_UNTRADEABLE_SYMBOLS = ['USDTIDRT', 'USDTTRY', 'BUSDUSDT', 'USDTRUB', 'USDTBRL', 'USTUSDT',
                               'BNBUSDT', 'TUSDUSDT']  # Symbols that i don't consider tradeable for various reasons.
 NO_LONGER_TRADED_BINANCE_SYMBOLS = ['USDTNGN', 'USDPUSDT', 'WNXMUSDT', 'LOKAUSDT', 'POWRUSDT', 'API3USDT', 'LOKAUSDT',
-                              'IMXUSDT', 'ANCUSDT']  # Some symbols stop being traded in Binance.
+                              'IMXUSDT', 'ANCUSDT', 'WOOUSDT', 'BURGERUSDT']  # Some symbols stop being traded in Binance.
 
 UNUSED_CHART_TRADE_SYMBOLS = NO_LONGER_TRADED_BINANCE_SYMBOLS + DEEMED_UNTRADEABLE_SYMBOLS
 FUND_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'DOGEUSDT',

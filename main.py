@@ -15,6 +15,7 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
 #TODO: Add create indexes in DB automatically. (timestamp in parsed_aggtrades, etc,.)
+#TODO: Add a Validator for transform trade data in 14400 minutes for every 10seconds..
 
 
 async def async_main(func, args):
