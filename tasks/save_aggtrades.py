@@ -14,8 +14,7 @@ def save_aggtrades():
     if not (start_ts := DB(PARSED_AGGTRADES_DB).end_ts):
         start_ts = 1640955600000
 
-
-    parse_minutes = 30
+    parse_minutes = 60
 
     while start_ts < current_time_in_ms(time.time()):
         end_ts = start_ts + mins_to_ms(parse_minutes)

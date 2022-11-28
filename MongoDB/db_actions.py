@@ -124,8 +124,7 @@ class ValidatorDB(DB, ABC):
         self.start_ts = start_ts_data[START_TS] if start_ts_data else None
 
     def set_end_ts(self, end_ts):
-        self.__getattr__(self.end_ts_collection).delete_one({})
-        self.__getattr__(self.end_ts_collection).insert_one({END_TS: end_ts})
+        self.__getattr__(self.end_ts_collection).find_one_and_update({}, {'$set': {END_TS: end_ts}})
 
     def set_start_ts(self, start_ts):
         self.__getattr__(self.start_ts_collection).insert_one({START_TS: start_ts})
@@ -150,6 +149,7 @@ def delete_all_text_dbs(text) -> None:
     for db in list_dbs():
         if text in db:
             delete_db(db)
+
 
 #delete_all_text_dbs("chart")
 
@@ -182,3 +182,5 @@ def delete_all_text_dbs(text) -> None:
 #             existing_trades += list(range(elem, elem + assume_existing_trade_parse_interval, ms_parse_interval))
 #
 #     return existing_trades
+
+
