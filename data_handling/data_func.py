@@ -176,7 +176,7 @@ def get_trade_data_group(symbols: list, start_ts: [int, dict], end_ts, trades_db
     start_ts = {symbol: start_ts for symbol in symbols} if not isinstance(start_ts, dict) else start_ts
     end_ts = {symbol: end_ts for symbol in symbols} if not isinstance(end_ts, dict) else end_ts
 
-    trades = {symbol: DBCol(trades_db, symbol).column_between(start_ts[symbol], end_ts[symbol], TS, ReturnType=TradeData) for symbol in symbols}
+    trades = {symbol: list(DBCol(trades_db, symbol).column_between(start_ts[symbol], end_ts[symbol], TS, ReturnType=TradeData)) for symbol in symbols}
     trade_data_group = dataclasses.make_dataclass('TradeDataGroup', [(symbol, dict) for symbol in symbols], bases=(TradeDataGroup,))(**trades)
 
     return trade_data_group.fill_trades_tf(start_ts, end_ts) if filled else trade_data_group
@@ -329,8 +329,8 @@ class Trade:
 
 class SymbolsTimeframeTrade(Trade):
     def __init__(self, start_ts: Dict[str, int] = None):
-        symb = DB(PARSED_AGGTRADES_DB).list_collection_names() if not start_ts else list(start_ts.keys())
-        symbols = set(symb) - set(UNUSED_CHART_TRADE_SYMBOLS)
+        symbols = set(DB(TEN_SECS_PARSED_TRADES_DB).list_collection_names() if not start_ts else list(start_ts.keys())) - \
+                  set(UNUSED_CHART_TRADE_SYMBOLS)
         super().__init__(symbols)
 
         if start_ts:
