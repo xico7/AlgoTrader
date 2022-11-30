@@ -20,7 +20,8 @@ def get_symbol_chart():
     symbol = "BTCUSDT"
     chart_tf_db = trades_chart.format(5)
     start_ts = ValidatorDB(chart_tf_db).start_ts
-    symbol_chart = DBCol(chart_tf_db, symbol).column_between(start_ts, start_ts + ONE_DAY_IN_MS / 24, 'start_ts')
+    # TODO: Refactor this when using again for column_between generator usage
+    symbol_chart = list(DBCol(chart_tf_db, symbol).column_between(start_ts, start_ts + ONE_DAY_IN_MS / 24, 'start_ts'))
     start_timestamps = [v['start_ts'] for v in symbol_chart if v['range_price_volume_difference']]
     volumes = [v['range_price_volume_difference']['rise_of_start_end_price_in_percentage'] for v in symbol_chart
                if v['range_price_volume_difference']]

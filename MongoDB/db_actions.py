@@ -5,8 +5,9 @@ import logging
 import time
 from abc import ABCMeta, ABC
 from dataclasses import fields
-from typing import Optional, Union
+from typing import Optional, Union, Iterator, Dict
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from data_handling.data_func import TradeData, TradesTAIndicators
 
@@ -15,12 +16,14 @@ from pymongo import MongoClient, database
 
 import logs
 
-from data_handling.data_helpers.data_staging import round_last_ten_secs, get_current_second_in_ms
+from data_handling.data_helpers.data_staging import round_last_ten_secs, get_current_second_in_ms, mins_to_ms
 from data_handling.data_helpers.vars_constants import TS, MongoDB, DEFAULT_COL_SEARCH, END_TS_VALIDATOR_DB_SUFFIX, \
-    VALIDATOR_DB, END_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECS_PARSED_TRADES_DB
+    VALIDATOR_DB, END_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECS_PARSED_TRADES_DB, TEN_SECS_MS
 
 ATOMIC_TIMEFRAME_CHART_TRADES = 5
 done_trades_chart_tf = "parsed_timestamp_trades_chart_{}_minutes"
+
+
 trades_chart = 'trades_chart_{}_minutes'
 trades_chart_base_db = trades_chart.format(ATOMIC_TIMEFRAME_CHART_TRADES)
 
@@ -30,6 +33,8 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
 class InvalidDataProvided(Exception): pass
+
+
 class EmptyDBCol(Exception): pass
 
 
@@ -54,26 +59,28 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
         super().__init__(DB(self.db_name), self.collection)
 
     def column_between(self, lower_bound, higher_bound, doc_key, limit=0, sort_value=pymongo.DESCENDING,
-                       ReturnType: Union[Optional, TradesTAIndicators, TradeData] = None):
-        query_values = list(self.find({MongoDB.AND: [{doc_key: {MongoDB.HIGHER_EQ: lower_bound}},
-                                                     {doc_key: {MongoDB.LOWER_EQ: higher_bound}}]}).sort(doc_key, sort_value).limit(limit))
-        return query_values[::-1] if not ReturnType else [ReturnType(**elem) for elem in query_values][::-1]
-
-    def get_all_values(self):
-        """Gets all values from a column, can stall if column has millions of values."""
-        return list(self.find({}))
+                       ReturnType: Union[Optional, TradesTAIndicators, TradeData] = None) -> Iterator:
+        for i in self.find({MongoDB.AND: [{doc_key: {MongoDB.HIGHER_EQ: lower_bound}},
+                                          {doc_key: {MongoDB.LOWER_EQ: higher_bound}}]}).sort(
+            doc_key, sort_value * -1).limit(
+            limit):  # sort_value is the opposite of what we want, '* -1' solves this.
+            yield i if not ReturnType else ReturnType(**i)
 
     def most_recent_timeframe(self, document_key=TS) -> Optional[float]:
-        return self.doc_key_endpoint(True, document_key)
+        return self._doc_key_endpoint(True, document_key)
 
     def oldest_timeframe(self, document_key=TS) -> Optional[float]:
-        return self.doc_key_endpoint(False, document_key)
+        return self._doc_key_endpoint(False, document_key)
 
-    def doc_key_endpoint(self, most_recent: bool, doc_key=TS) -> Optional[float]:
-        endpoint_1 = self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1, sort_value=-1)
-        endpoint_2 = self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1, sort_value=1)
+    def _doc_key_endpoint(self, most_recent: bool, doc_key=TS) -> Optional[float]:
+        try:
+            endpoint_1 = next(self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1, sort_value=-1))
+            endpoint_2 = next(self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1, sort_value=1))
+        except StopIteration as e:
+            LOG.error("Collection '%s' from database '%s' contains no data with key '%s'.", self.collection, self.db_name, doc_key)
+            raise InvalidDataProvided(f"Collection '{self.collection}' from database '{self.db_name}' contains no data with key '{doc_key}'.") from e
         if endpoint_1 and endpoint_2:
-            endpoint_tfs = endpoint_1[0][doc_key], endpoint_2[0][doc_key]
+            endpoint_tfs = endpoint_1[doc_key], endpoint_2[doc_key]
             try:
                 return max(endpoint_tfs) if most_recent else min(endpoint_tfs)
             except TypeError:
@@ -88,11 +95,11 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
 
     def chart_endpoint_ts(self, most_recent: bool, init_db=None):
         try:
-            return self.doc_key_endpoint(most_recent=most_recent, doc_key='start_ts')
+            return self._doc_key_endpoint(most_recent=most_recent, doc_key='start_ts')
         except EmptyDBCol as e:
             if init_db:
                 with contextlib.suppress(EmptyDBCol):
-                    return round_last_ten_secs(DBCol(init_db, self.collection).doc_key_endpoint(False))
+                    return round_last_ten_secs(DBCol(init_db, self.collection)._doc_key_endpoint(False))
 
             raise InvalidDataProvided(f"symbol '{self.collection}' doesn't have a valid timestamp in db "
                                       f"'{self.db_name}' and no other db to initialize from.") from e
@@ -138,7 +145,9 @@ def ten_seconds_symbols_filled_data(symbols, start_ts, end_ts):
     from data_handling.data_func import TradesTAIndicators, get_trade_data_group
     trade_data = get_trade_data_group(symbols, start_ts, end_ts - 1, TEN_SECS_PARSED_TRADES_DB, filled=True)
     symbols = [s.name for s in fields(trade_data)]
-    return {symbol: TradesTAIndicators(**{'trades': getattr(trade_data, symbol), 'start_ts': start_ts, 'end_ts': end_ts}) for symbol in symbols}
+    return {
+        symbol: TradesTAIndicators(**{'trades': getattr(trade_data, symbol), 'start_ts': start_ts, 'end_ts': end_ts})
+        for symbol in symbols}
 
 
 def delete_db(db_name) -> None:
@@ -151,7 +160,54 @@ def delete_all_text_dbs(text) -> None:
             delete_db(db)
 
 
-#delete_all_text_dbs("chart")
+def validate_trade_data_dbs(timeframe_in_minutes: int):
+    chart_tf_db = trades_chart.format(timeframe_in_minutes)
+    mins_to_validate_at_a_time = 1440
+    accepted_trades_number = mins_to_validate_at_a_time * 6 + 1
+    validate_db = DB(trades_chart.format(timeframe_in_minutes))
+
+    missing_elements = {}
+
+    for symbol in validate_db.list_collection_names():
+        save_missing_tfs = {}
+        init_ts = DBCol(chart_tf_db, symbol).chart_endpoint_ts(False)
+        save_init_ts = init_ts
+        end_ts = DBCol(chart_tf_db, symbol).chart_endpoint_ts(True)
+        append_ts = mins_to_ms(mins_to_validate_at_a_time)
+
+        while init_ts + append_ts <= end_ts:
+            check_partial_trades = list(DBCol(chart_tf_db, symbol).column_between(init_ts, init_ts + append_ts, 'start_ts'))
+            if len(check_partial_trades) != accepted_trades_number:
+                parsed_tfs = set([trade['start_ts'] for trade in check_partial_trades])
+                tfs_to_parse = set(list(range(init_ts, init_ts + append_ts, TEN_SECS_MS)))
+                missing_tfs = tfs_to_parse - parsed_tfs
+                save_missing_tfs.setdefault(symbol, []).append(missing_tfs)
+            time.sleep(0.1)
+            init_ts += append_ts
+
+        concatenated_lists = []
+        for list_elem in save_missing_tfs[symbol]:
+            concatenated_lists += list(list_elem)
+
+        started_tf = False
+        for elem in range(save_init_ts, end_ts, TEN_SECS_MS):
+            if elem in concatenated_lists and not started_tf:
+                started_tf = True
+                init_miss_val = elem
+            if elem not in concatenated_lists and started_tf:
+                missing_elements.setdefault(symbol, []).append({(init_miss_val, elem)})
+                started_tf = False
+    if missing_elements:
+        print(missing_elements)
+        # TODO: add error handling.
+
+#validate_trade_data_dbs(1440)
+# validate_trade_data_dbs(480)
+# validate_trade_data_dbs(240)
+# validate_trade_data_dbs(120)
+# validate_trade_data_dbs(60)
+
+# delete_all_text_dbs("chart")
 
 # def create_index_db_cols(db, field) -> None:
 #     db_conn = DB(db)
@@ -161,14 +217,14 @@ def delete_all_text_dbs(text) -> None:
 #
 #
 # create_index_db_cols('parsed_aggtrades', 'ID')
-#create_index_db_cols('parsed_aggtrades', 'timestamp')
+# create_index_db_cols('parsed_aggtrades', 'timestamp')
 
 
-#Tests:
-#print("here")
-#query_starting_ts('parsed_aggtrades', 'adausdt')
-#insert_one_db('end_timestamp_aggtrades_validator_db', 'timestamp', {'timestamp': 1640955601009})
-#delete_all_text_dbs("chart")
+# Tests:
+# print("here")
+# query_starting_ts('parsed_aggtrades', 'adausdt')
+# insert_one_db('end_timestamp_aggtrades_validator_db', 'timestamp', {'timestamp': 1640955601009})
+# delete_all_text_dbs("chart")
 
 
 # def query_existing_ws_trades(start_ts, end_ts, ms_parse_interval):  # If BTCUSDT has trades working it assumes all other symbols were working.
@@ -182,5 +238,3 @@ def delete_all_text_dbs(text) -> None:
 #             existing_trades += list(range(elem, elem + assume_existing_trade_parse_interval, ms_parse_interval))
 #
 #     return existing_trades
-
-
