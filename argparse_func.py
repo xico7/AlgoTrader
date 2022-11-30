@@ -23,7 +23,7 @@ def get_argparse_execute_functions():
 
     subparser.choices['transform-trade-data'].add_argument(f"--chart-minutes", type=int, required=False, help="Volume percentile data chart timeframe.")
     subparser.choices['transform-trade-data'].add_argument(f"--multithread-start-end-timeframe", type=int, nargs=2, required=False,
-                                                           help="Run trade data with given start/end timestamp so it "
+                                                           help="Run trade data with given start/end timestamp (timestamp in ms) so it "
                                                                 "can be ran by multiple threads to speed up execution.")
 
     parsed_args = vars(parent_parser.parse_args())

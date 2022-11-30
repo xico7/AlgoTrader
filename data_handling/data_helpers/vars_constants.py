@@ -1,9 +1,4 @@
 ## Config variables, variables that can change how the program behaves are inserted here.
-from binance import Client
-from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
-
-binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET)
-
 
 AGGTRADE_PYCACHE = 1000
 ONE_HOUR_IN_MS = 60 * 60 * 1000
@@ -12,7 +7,7 @@ DEFAULT_PARSE_INTERVAL = 10
 DEFAULT_PARSE_INTERVAL_IN_MS = DEFAULT_PARSE_INTERVAL * 1000
 DEFAULT_TIMEFRAME_IN_MS = ONE_HOUR_IN_MS
 DEFAULT_COL_SEARCH = 'BTCUSDT'
-FUND_COL = "fund_data"
+FUND_DATA_COLLECTION = "fund_data"
 TEN_SECS_PARSED_TRADES_DB = "ten_seconds_parsed_trades"
 PARSED_AGGTRADES_DB = "parsed_aggtrades"
 VALIDATOR_DB = "Timestamps_Validator"
@@ -33,8 +28,10 @@ NO_LONGER_TRADED_BINANCE_SYMBOLS = ['USDTNGN', 'USDPUSDT', 'WNXMUSDT', 'LOKAUSDT
 
 UNUSED_CHART_TRADE_SYMBOLS = NO_LONGER_TRADED_BINANCE_SYMBOLS + DEEMED_UNTRADEABLE_SYMBOLS
 FUND_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'DOGEUSDT',
-                           'AVAXUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'ALGOUSDT', 'IMXUSDT', 'GLMRUSDT']
+                           'AVAXUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'LINKUSDT', 'ALGOUSDT']
 
+# This index is used to determine which is the main document key for the collection timeframe
+TIMEFRAME_DOC_KEY_INDEX = 'timeframe_index_placeholder_name'
 
 ## Program constants, variables that contain 'static' values that are used in one or more modules.
 
@@ -59,15 +56,21 @@ class MongoDB:
 
 
 #
+
 # #### Timeframes ####
 #
+
+TWO_HOURS_IN_MINUTES = 120
+ONE_DAY_IN_MINUTES = 1440
+
+
 SECONDS_TO_MS_APPEND = '000'
 TEN_SECONDS = 10
 ONE_MIN_IN_SECS = 60
 ONE_MIN_IN_MS = int(str(ONE_MIN_IN_SECS) + SECONDS_TO_MS_APPEND)
 TEN_MIN_IN_MS = ONE_MIN_IN_MS * 10
 THIRTY_MINS_IN_MS = TEN_MIN_IN_MS * 3
-TEN_SECS_MS = 10000
+TEN_SECONDS_IN_MS = 10000
 FIVE_SECS_IN_MS = 5000
 ONE_SECONDS_IN_MS = 1000
 #
@@ -75,3 +78,4 @@ ONE_SECONDS_IN_MS = 1000
 #
 USDT = "USDT"
 BNB = "BNB"
+

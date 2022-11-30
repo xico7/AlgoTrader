@@ -10,10 +10,9 @@ BINANCE_API_KEY=XXXXX, BINANCE_API_SECRET=XXXXX
 To run the program it is recommended to package it, but you can also use the IDE with input arguments.
 
 To package the application go to the programs root dir and run:
-python3 ./package.py
+'python3 ./package.py'
 
-After this will you have the application zipped to one single executable file and you can run the data aggregators.
+After this the application zipped to one single executable file and you can run the program with default arguments,
 
-python3 AlgoTrader.py save-aggtrades (gathers data from the past and inserts in MongoDB).
+For this you just need python 3.10 and run 'python3 AlgoTrader.py' . 
 
-python3 AlgoTrader.py parse-trade-data ( Transforms the data in ten seconds timeframes with different statistical metrics.)

@@ -3,14 +3,16 @@ import logging
 from datetime import datetime
 from typing import Optional, List, Dict
 
+from pymongo.errors import BulkWriteError
+
 import logs
 from support.decorators_extenders import init_only_existing
 from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, TS, DEFAULT_PARSE_INTERVAL, UNUSED_CHART_TRADE_SYMBOLS, \
     TEN_SECS_PARSED_TRADES_DB, PARSED_AGGTRADES_DB, MARKETCAP, DEFAULT_TIMEFRAME_IN_MS, \
-    END_TS_AGGTRADES_VALIDATOR_DB, DEFAULT_PARSE_INTERVAL_IN_MS, TEN_SECS_MS, FUND_COL, START_TS_AGGTRADES_VALIDATOR_DB, TRADE_DATA_CACHE_TIME_IN_MS, DEFAULT_SYMBOL_SEARCH, TRADE_DATA_PYTHON_CACHE_SIZE
+    END_TS_AGGTRADES_VALIDATOR_DB, DEFAULT_PARSE_INTERVAL_IN_MS, TEN_SECONDS_IN_MS, FUND_DATA_COLLECTION, START_TS_AGGTRADES_VALIDATOR_DB, TRADE_DATA_CACHE_TIME_IN_MS, DEFAULT_SYMBOL_SEARCH, TRADE_DATA_PYTHON_CACHE_SIZE
 from dataclasses import dataclass, asdict
 from MongoDB.db_actions import DB, DBCol, ValidatorDB
-from data_handling.data_helpers.data_staging import round_last_ten_secs, as_dict_without_keys
+from data_handling.data_helpers.data_staging import round_last_ten_secs
 
 
 class InvalidStartTimestamp(Exception): pass
@@ -36,23 +38,25 @@ class CacheAggtrades(dict):
         self.symbol_parsed_trades[symbol] = [Aggtrade(**trade, **{'asdict': True}).data for trade in trades]
 
     def insert_in_db_clear(self):
-        if not DB(PARSED_AGGTRADES_DB).list_collection_names():
-            ValidatorDB(PARSED_AGGTRADES_DB).set_start_ts(self.start_ts)
-
         for symbol, trades in self.symbol_parsed_trades.items():
             if trades:
                 DBCol(PARSED_AGGTRADES_DB, symbol).insert_many(trades)
+
+        if not ValidatorDB(PARSED_AGGTRADES_DB).start_ts:
+            ValidatorDB(PARSED_AGGTRADES_DB).set_start_ts_add_index(self.start_ts, 'timestamp')
         ValidatorDB(PARSED_AGGTRADES_DB).set_end_ts(self.end_ts)
+
         self.symbol_parsed_trades.clear()
         return True
 
 
 class CacheTradeData(dict):
-    def __init__(self, db_name, symbols):
+    def __init__(self, db_name, symbols, ignore_dup_keys=False):
         super().__init__()
         self.db_name = db_name
         self.symbols = symbols
         self.cache_db = {}
+        self.ignore_keys = ignore_dup_keys
         self._init_reset_cache()
 
     def __len__(self):
@@ -61,40 +65,41 @@ class CacheTradeData(dict):
     def _init_reset_cache(self):
         self.cache_db = {symbol: {} for symbol in self.symbols}
 
-    def append_update(self, trade_taindicator_data, remove_trades: bool):
-        if remove_trades:
-            cached_data = {}
-            for symbol, trades in trade_taindicator_data.items():
-                save_trades = trades.trades
-                trades.trades = []
-                cached_data[symbol] = dataclasses.asdict(trades)
-                trades.trades = save_trades
-        else:
-            cached_data = {symbol: dataclasses.asdict(trades) for symbol, trades in trade_taindicator_data.items()}
-
+    def append_update(self, trade_taindicator_data):
         for symbol in self.symbols:
-            self.cache_db[symbol].update({str(len(self) + 1): cached_data[symbol]})
+            save_trades = trade_taindicator_data[symbol].trades
+            trade_taindicator_data[symbol].trades = []
+            self.cache_db[symbol].update({str(len(self) + 1): dataclasses.asdict(trade_taindicator_data[symbol])})
+            trade_taindicator_data[symbol].trades = save_trades
 
         if len(self) >= TRADE_DATA_PYTHON_CACHE_SIZE:
-            self.insert_in_db_clear(remove_trades)
+            self.insert_in_db_clear()
         return self
 
-    def insert_in_db_clear(self, remove_trades: bool = False):
+    def insert_in_db_clear(self):
+        if not self.cache_db:
+            LOG.debug("No trades to insert.")
+            return
+
         for symbol, cached_trades in self.cache_db.items():
-            if remove_trades:
-                cached_trades = as_dict_without_keys(cached_trades, ['trades'])
-            DBCol(self.db_name, symbol).insert_many(list(cached_trades.values()))
+            try:
+                DBCol(self.db_name, symbol).insert_many(list(cached_trades.values()))
+            except BulkWriteError:
+                LOG.warning("Duplicate key while trying to insert data in DB '%s' for symbol '%s'", self.db_name, symbol)
+                continue
 
         start_ts = self.cache_db[DEFAULT_SYMBOL_SEARCH]['1']['start_ts']
         end_ts = self.cache_db[DEFAULT_SYMBOL_SEARCH][str(len(self.cache_db[DEFAULT_SYMBOL_SEARCH]))]['end_ts']
 
         validator_db = ValidatorDB(self.db_name)
         if not validator_db.start_ts:
-            ValidatorDB(self.db_name).set_start_ts(start_ts)
+            ValidatorDB(self.db_name).set_start_ts_add_index(start_ts, 'start_ts', unique=True)
 
         validator_db.set_end_ts(end_ts)
         self._init_reset_cache()
-        LOG.info(f"Transformed data starting from {(datetime.fromtimestamp(start_ts / 1000))} to {datetime.fromtimestamp(end_ts / 1000)}")
+
+        LOG.info(f"Transformed data starting from {(datetime.fromtimestamp(start_ts / 1000))} to "
+                 f"{datetime.fromtimestamp(end_ts / 1000)} for db {self.db_name}")
 
 
 @init_only_existing
@@ -130,8 +135,8 @@ class TradeDataGroup(Trades):
             end_ts = getattr(self, DEFAULT_SYMBOL_SEARCH)[0].timestamp
             for symbol in dataclasses.fields(self):
                 del getattr(self, symbol.name)[0]
-            refresh_cache = get_trade_data_group(chart_filtered_symbols, end_ts + TEN_SECS_MS,
-                             end_ts + TRADE_DATA_CACHE_TIME_IN_MS, TEN_SECS_PARSED_TRADES_DB, filled=True)
+            refresh_cache = get_trade_data_group(chart_filtered_symbols, end_ts + TEN_SECONDS_IN_MS,
+                                                 end_ts + TRADE_DATA_CACHE_TIME_IN_MS, TEN_SECS_PARSED_TRADES_DB, filled=True)
             for symbol in dataclasses.fields(refresh_cache):
                 setattr(self, symbol.name, getattr(refresh_cache, symbol.name))
         else:
@@ -176,7 +181,7 @@ def get_trade_data_group(symbols: list, start_ts: [int, dict], end_ts, trades_db
     start_ts = {symbol: start_ts for symbol in symbols} if not isinstance(start_ts, dict) else start_ts
     end_ts = {symbol: end_ts for symbol in symbols} if not isinstance(end_ts, dict) else end_ts
 
-    trades = {symbol: list(DBCol(trades_db, symbol).column_between(start_ts[symbol], end_ts[symbol], TS, ReturnType=TradeData)) for symbol in symbols}
+    trades = {symbol: list(DBCol(trades_db, symbol).column_between(start_ts[symbol], end_ts[symbol], ReturnType=TradeData)) for symbol in symbols}
     trade_data_group = dataclasses.make_dataclass('TradeDataGroup', [(symbol, dict) for symbol in symbols], bases=(TradeDataGroup,))(**trades)
 
     return trade_data_group.fill_trades_tf(start_ts, end_ts) if filled else trade_data_group
@@ -207,9 +212,6 @@ class TradesTAIndicators:
 
     def __post_init__(self):
         from operator import itemgetter
-
-        # if all([getattr(self, f.name) for f in dataclasses.fields(self)]):
-        #     return  # DB already did instantiation.
 
         if not (aggregate_prices := [tf.price for tf in self.trades if tf.price]):
             self._distinct_trades = 0
@@ -329,17 +331,18 @@ class Trade:
 
 class SymbolsTimeframeTrade(Trade):
     def __init__(self, start_ts: Dict[str, int] = None):
-        symbols = set(DB(TEN_SECS_PARSED_TRADES_DB).list_collection_names() if not start_ts else list(start_ts.keys())) - \
-                  set(UNUSED_CHART_TRADE_SYMBOLS)
+        symbols = set(DB(PARSED_AGGTRADES_DB).list_collection_names()) - set(UNUSED_CHART_TRADE_SYMBOLS)
         super().__init__(symbols)
 
-        if start_ts:
+        if not ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts:  # Init DB.
+            self.start_ts = {symbol: ValidatorDB(PARSED_AGGTRADES_DB).start_ts for symbol in DB(PARSED_AGGTRADES_DB).list_collection_names()}
+        elif start_ts:
             self.start_ts = start_ts
         else:
             self.start_ts = {}
             for symbol in symbols:
                 start_ts = DBCol(self.db_name, symbol).most_recent_timeframe()
-                self.start_ts[symbol] = start_ts + TEN_SECS_MS if start_ts else ValidatorDB(PARSED_AGGTRADES_DB).start_ts
+                self.start_ts[symbol] = start_ts + TEN_SECONDS_IN_MS if start_ts else ValidatorDB(PARSED_AGGTRADES_DB).start_ts
 
         self.end_ts = {symbol: self.start_ts[symbol] + self.timeframe for symbol in symbols}
 
@@ -349,13 +352,16 @@ class SymbolsTimeframeTrade(Trade):
             self.add_trades(self.symbols, self.start_ts, self.end_ts)
 
     def parse_and_insert_trades(self):
+        if self.finished:
+            return
+
         for symbol in self.symbols:
             if trades := [asdict(v) for v in self.ts_data[symbol].values()]:
                 DBCol(self.db_name, symbol).insert_many(trades)
 
         validator_db = ValidatorDB(TEN_SECS_PARSED_TRADES_DB)
         if not validator_db.start_ts:
-            validator_db.set_start_ts(min([self.start_ts[symbol] for symbol in self.symbols]))
+            validator_db.set_start_ts_add_index(min([self.start_ts[symbol] for symbol in self.symbols]), 'timestamp', unique=True)
         validator_db.set_end_ts(max([self.end_ts[symbol] for symbol in self.symbols]))
 
         LOG.info(f"Parsed 1 hour symbol pairs with a maximum start time of "
@@ -367,11 +373,11 @@ class FundTimeframeTrade(Trade):
         from data_handling.data_helpers.vars_constants import FUND_SYMBOLS_USDT_PAIRS
 
         super().__init__(FUND_SYMBOLS_USDT_PAIRS)
-        self.db_conn = DBCol(self.db_name, FUND_COL)
+        self.db_conn = DBCol(self.db_name, FUND_DATA_COLLECTION)
 
         if start_ts:
             self.start_ts = start_ts
-        elif start_ts := ValidatorDB(FUND_COL).end_ts:
+        elif start_ts := ValidatorDB(FUND_DATA_COLLECTION).end_ts:
             self.start_ts = start_ts
         else:
             self.start_ts = ValidatorDB(PARSED_AGGTRADES_DB).start_ts
@@ -386,6 +392,9 @@ class FundTimeframeTrade(Trade):
             self.add_trades(FUND_SYMBOLS_USDT_PAIRS, self.start_ts, self.end_ts)
 
     def parse_and_insert_trades(self):
+        if self.finished:
+            return
+
         for tf in range(self.start_ts, self.end_ts, self.ms_parse_interval):
             volume_traded, current_marketcap = 0, 0
 
@@ -394,15 +403,16 @@ class FundTimeframeTrade(Trade):
                     tf_trade = self.ts_data[symbol][tf]
                     current_marketcap += tf_trade.price * self.ratios[symbol][MARKETCAP] / self.ratios[symbol][PRICE]
                     volume_traded += tf_trade.price * tf_trade.quantity
-                except KeyError:
+                except KeyError:  # No trades done in this timeframe.
                     continue
 
             self.tf_marketcap_quantity.append({TS: tf, MARKETCAP: current_marketcap, QUANTITY: volume_traded})
 
         self.db_conn.insert_many(self.tf_marketcap_quantity)
-        fund_validator_db_col = ValidatorDB(FUND_COL)
+        fund_validator_db_col = ValidatorDB(FUND_DATA_COLLECTION)
         if not fund_validator_db_col.start_ts:
-            fund_validator_db_col.set_start_ts(self.start_ts)
+            fund_validator_db_col.set_start_ts_add_index(self.start_ts, 'timestamp', unique=True)
+
         fund_validator_db_col.set_end_ts(self.end_ts)
 
         LOG.info(f"Parsed fund trades from {datetime.fromtimestamp(self.start_ts / 1000)} to "

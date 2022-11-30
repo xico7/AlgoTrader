@@ -3,7 +3,7 @@ import re
 import time
 from typing import Union, List
 
-from data_handling.data_helpers.vars_constants import USDT, BNB, TEN_SECS_MS, coingecko_marketcap_api_link, FUND_SYMBOLS_USDT_PAIRS
+from data_handling.data_helpers.vars_constants import USDT, BNB, TEN_SECONDS_IN_MS, coingecko_marketcap_api_link, FUND_SYMBOLS_USDT_PAIRS
 
 
 def remove_usdt(symbols: Union[List[str], str]):
@@ -23,20 +23,12 @@ def mins_to_ms(minutes):
     return seconds_to_ms(minutes) * 60
 
 
-def as_dict_without_keys(dict_of_dicts_obj, do_not_parse_keys: list):
-    for v in dict_of_dicts_obj.values():
-        for key in do_not_parse_keys:
-            if key in v:
-                del v[key]
-
-    return dict_of_dicts_obj
-
 def current_time_in_ms(cur_time_in_secs: float):
     return cur_time_in_secs * 1000
 
 
 def round_last_ten_secs(timestamp):
-    return timestamp - TEN_SECS_MS + (TEN_SECS_MS - (timestamp % TEN_SECS_MS))
+    return timestamp - TEN_SECONDS_IN_MS + (TEN_SECONDS_IN_MS - (timestamp % TEN_SECONDS_IN_MS))
 
 
 def coin_ratio_marketcap():

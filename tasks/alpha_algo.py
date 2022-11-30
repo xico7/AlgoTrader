@@ -1,4 +1,7 @@
+import itertools
 import types
+from collections import namedtuple
+from enum import Enum
 
 import bson
 from pymongoarrow.api import Schema
@@ -7,64 +10,147 @@ from pymongoarrow.monkey import patch_all
 import pandas
 from matplotlib.axes._subplots import SubplotBase
 #from data_handling.data_func import TradesTAIndicators
+from data_handling.data_helpers.data_staging import mins_to_ms
 from data_handling.data_helpers.vars_constants import DEFAULT_COL_SEARCH, ONE_DAY_IN_MS, ONE_HOUR_IN_MS, \
-    TEN_SECS_PARSED_TRADES_DB, TS, TEN_SECS_MS
+    TEN_SECS_PARSED_TRADES_DB, TS, TEN_SECONDS_IN_MS, ONE_DAY_IN_MINUTES, TWO_HOURS_IN_MINUTES
 
 patch_all()
 
 from MongoDB.db_actions import DB, DBCol, trades_chart, ValidatorDB
 
 
+class AlphaAlgoRulesVars(Enum):
+    one_day_minimum_range_percentage = 6
+    two_hours_minimum_range_percentage = 1.5
+
 # TODO: Preciso de ver os vários perfis do 'volume rise' principalment eno fund
-# TODO: Lowest range percentage for crypto to be considered,
-# TODO: Criar um indicador que extende o volume% e a subida em %, o volume tem de ter um minimo para se considerar representativo..
-# TODO: Create test that validates each 10 seconds a value in mongodb for all symbols
-TOO_BIG_UNUSED_SYMBOLS = ['BTCUSDT', 'ETHUSDT']
+
+
+TOO_BIG_UNUSED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']
+
 
 def execute_alpha_algo():
     def test_alpha():
-        #  Lowest range percentage considered for coin to be traded, i would say 8% in last 24Hours, 1.5% in last 2 Hours
-        #  Lowest range percentage considered for fund data to be relevant, i would say 6% in last 24Hours, 1.5% in last 2 Hours
         pass
+        #  Lowest range percentage considered for coin to be traded, i would say 8% in last 24Hours, 1.5% in last 2 Hours.
+        #  Use only coins in top 50s day volume.
+        #  Volume must be at least 50% more than the average of last months daily.
+        #  In fund, the price is irrelevant, just the volume action to determine if its rising or not, /
+        #  in asset to buy the price is relevant because i need to get in cheap.
+
+    def query_chart_db_data(symbol, chart_tf, init_ts, timeframe_to_query):
+        return DBCol(chart_tf, symbol).column_between(init_ts, init_ts + timeframe_to_query, 'start_ts')
+
+    def is_fund_data_rising():
+        #  Lowest range percentage considered for fund data to be relevant, i would say 6% in last 24Hours, 1.5% in last 2 Hours.
+        # Nas últimas 24h o end price vol acima dos 90%, nas últimas 4horas 93%, e nas 1hora 95%.
+        # Volume relativo em releção ao último mês de 1.5
+
+        potential_valid_fund_data = []
+        append_ts = mins_to_ms(2880)
+        symbol = "fund_data"
+        MapChartDBToMS = namedtuple("MapChartDBToMS", ["db_name", "db_timeframe_in_milliseconds"])
+
+        def get_chart_db_ms(timeframe_in_minutes: int):
+            return MapChartDBToMS(trades_chart.format(timeframe_in_minutes), mins_to_ms(timeframe_in_minutes))
+
+        chart_tf_one_day = get_chart_db_ms(ONE_DAY_IN_MINUTES)
+        chart_tf_2h = get_chart_db_ms(TWO_HOURS_IN_MINUTES)
+        init_ts = DBCol(chart_tf_one_day.db_name, symbol).oldest_timeframe()
+        end_ts = init_ts + mins_to_ms(1440*2)
+        a = DBCol(chart_tf_one_day.db_name, DEFAULT_COL_SEARCH).most_recent_timeframe()
+
+        for mapped_trade in zip(DBCol(chart_tf_one_day.db_name, symbol).column_between(init_ts, end_ts, 'start_ts'),
+                         DBCol(chart_tf_2h.db_name, symbol).column_between(
+                             init_ts + chart_tf_one_day.db_timeframe_in_milliseconds - chart_tf_2h.db_timeframe_in_milliseconds,
+                             end_ts + chart_tf_one_day.db_timeframe_in_milliseconds - chart_tf_2h.db_timeframe_in_milliseconds, 'start_ts')):
+            if mapped_trade[0]['price_range_percentage'] > AlphaAlgoRulesVars.one_day_minimum_range_percentage \
+                    and mapped_trade[0]['price_range_percentage'] > AlphaAlgoRulesVars.two_hours_minimum_range_percentage:
+                potential_valid_fund_data.append(mapped_trade[0]['end_ts'])
+        a = DBCol(chart_tf_one_day, symbol).column_between(init_ts, end_ts, 'start_ts')
+
+        while init_ts + append_ts <= end_ts:
+            for trade in query_chart_db_data(1440, ):
+                pass
+
+    is_fund_data_rising()
+
+
+    symbol = "BTCUSDT"
 
 
 
 
-#     symbol = "BTCUSDT"
-#
-#     figure, axis = plt.subplots(2, 2)
-#
-#     def standard_plot(timeframe_in_mins, plot: [SubplotBase, types.ModuleType], symbol):
-#         chart_tf_db = trades_chart.format(timeframe_in_mins)
-#         start_ts = ValidatorDB(chart_tf_db).start_ts
-#         symbol_chart = DBCol(chart_tf_db, symbol).column_between(start_ts, start_ts, 'start_ts')[0]
-#
-#
-#         plot.plot([counter for counter in symbol_chart['range_price_volume'].keys()],
-#              [vol['sum_volume_percentage'] for vol in symbol_chart['range_price_volume'].values()])
-#
-#         plot.text(1, 75, f"rise_of_start_end_price_in_percentage: "
-#                         f"{symbol_chart['range_price_volume_difference']['rise_of_start_end_price_in_percentage']}")
-#         plot.text(1, 80, f"end_price_counter: {symbol_chart['end_price_counter']}")
-#         plot.text(1, 85, f"start_price_counter: {symbol_chart['start_price_counter']}")
-#         plot.text(1, 90, f"price_range_percentage: {symbol_chart['price_range_percentage']}")
-#
-#         def match_vol_percentage_with_counter(volume_sum):
-#             for i, range_price_volume_data in enumerate(symbol_chart['range_price_volume'].values()):
-#                 if volume_sum == range_price_volume_data['sum_volume_percentage']:
-#                     return i
-#
-#         plot.plot(match_vol_percentage_with_counter(symbol_chart['range_price_volume_difference']['start_price_volume_percentage']),
-#                  symbol_chart['range_price_volume_difference']['start_price_volume_percentage'], 'ro')
-#         plot.plot(match_vol_percentage_with_counter(symbol_chart['range_price_volume_difference']['end_price_volume_percentage']),
-#                  symbol_chart['range_price_volume_difference']['end_price_volume_percentage'], 'bo')
-#
-#
-#     standard_plot(1440, axis[0, 0], symbol)
-#     standard_plot(1440, axis[1, 0], 'fund_data')
-#     standard_plot(480, axis[0, 1], 'fund_data')
-#
-#     plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    figure, axis = plt.subplots(2, 2)
+
+    def standard_plot(timeframe_in_mins, plot: [SubplotBase, types.ModuleType], symbol):
+        chart_tf_db = trades_chart.format(timeframe_in_mins)
+        start_ts = ValidatorDB(chart_tf_db).start_ts
+        symbol_chart = DBCol(chart_tf_db, symbol).column_between(start_ts, start_ts, 'start_ts')[0]
+
+        plot.plot([counter for counter in symbol_chart['range_price_volume'].keys()],
+             [vol['sum_volume_percentage'] for vol in symbol_chart['range_price_volume'].values()])
+
+        plot.text(1, 75, f"rise_of_start_end_price_in_percentage: "
+                        f"{symbol_chart['range_price_volume_difference']['rise_of_start_end_price_in_percentage']}")
+        plot.text(1, 80, f"end_price_counter: {symbol_chart['end_price_counter']}")
+        plot.text(1, 85, f"start_price_counter: {symbol_chart['start_price_counter']}")
+        plot.text(1, 90, f"price_range_percentage: {symbol_chart['price_range_percentage']}")
+
+        def match_vol_percentage_with_counter(volume_sum):
+            for i, range_price_volume_data in enumerate(symbol_chart['range_price_volume'].values()):
+                if volume_sum == range_price_volume_data['sum_volume_percentage']:
+                    return i
+
+        plot.plot(match_vol_percentage_with_counter(symbol_chart['range_price_volume_difference']['start_price_volume_percentage']),
+                 symbol_chart['range_price_volume_difference']['start_price_volume_percentage'], 'ro')
+        plot.plot(match_vol_percentage_with_counter(symbol_chart['range_price_volume_difference']['end_price_volume_percentage']),
+                 symbol_chart['range_price_volume_difference']['end_price_volume_percentage'], 'bo')
+
+
+    standard_plot(1440, axis[0, 0], symbol)
+    standard_plot(1440, axis[1, 0], 'fund_data')
+    standard_plot(480, axis[0, 1], 'fund_data')
+
+    plt.show()
 
     def range_percentages(timeframe_in_mins):
         chart_tf_db = trades_chart.format(timeframe_in_mins)
@@ -84,20 +170,20 @@ def execute_alpha_algo():
 
         #plt.text(symbol_chart['price_range_percentage'], symbol_chart['price_range_percentage'], symbol)
 
-    range_percentages(1440)
-    plt.show()
-
+    # range_percentages(1440)
+    # plt.show()
 
     def plot_volumes(timeframe_in_mins):
         chart_tf_db = trades_chart.format(timeframe_in_mins)
 
         start_ts = ValidatorDB(chart_tf_db).start_ts
         for symbol in DB(chart_tf_db).list_collection_names():
-            symbol_chart = DBCol(chart_tf_db, symbol).column_between(start_ts, start_ts, 'start_ts')[0]
+            symbol_chart = DBCol(chart_tf_db, symbol).find_one(start_ts, start_ts, 'start_ts')
             plt.text(symbol_chart['total_volume'], symbol_chart['total_volume'], symbol)
             plt.plot(symbol_chart['total_volume'], symbol_chart['total_volume'], 'ro')
 
-    plot_volumes(120)
+    plot_volumes(1440)
+    plt.show()
     total_volumes = [v['total_volume'] for v in symbol_chart]
 
     volumes = [v['range_price_volume_difference']['rise_of_start_end_volume_in_percentage'] for v in symbol_chart
@@ -108,63 +194,6 @@ def execute_alpha_algo():
     plt.plot(list(range(1, 100)), total_volumes)
     plt.show()
 
-
-    symbol_trades = DBCol(TEN_SECS_PARSED_TRADES_DB, symbol).column_between(start_ts, start_ts + ONE_DAY_IN_MS / 24, TS)
-    start_timestamps = [v[TS] for v in symbol_trades]
-    trades = [v['price'] for v in symbol_trades]
-    plt.plot(start_timestamps, trades)
-    plt.show()
-
-    print("here")
-
-
-
-    df2 = pandas.DataFrame.from_dict(symbol_chart)
-    for a, b in df2.range_price_volume_difference.items():
-        print("here")
-    #df1 = pandas.DataFrame.from_dict(a)
-    #df1.plot(x='end_ts', y='last_price_counter', kind='scatter')
-    df2.plot(x='min_price', y='range_price_volume_difference.start_price_volume_percentage', kind='scatter')
-
-    #df2.plot(x='end_ts', y='sum_volume_percentage', kind='scatter')
-    #df2.plot(x='end_ts', y='most_recent_price', kind='scatter')
-
-
-
-    chart_db = DB('trades_chart_1440_minutes')
-    symbol_charts = {}
-    tf_to_test = int(ONE_HOUR_IN_MS / 2)
-    for symbol in chart_db.list_collection_names():
-        start_ts = chart_db.__getattr__(symbol).oldest_timeframe('start_ts')
-        symbol_chart = {trade.start_ts: trade for trade in chart_db.__getattr__(symbol).column_between(
-            start_ts, start_ts + ONE_HOUR_IN_MS, 'start_ts', ReturnType=TradesTAIndicators)}
-        symbol_cache_vals = []
-        for _, trades in symbol_chart.items():
-            if not trades.start_ts + tf_to_test > trades.end_ts:
-               symbol_cache_vals.append(
-                    trades.range_price_volume[str(trades.last_price_counter)]['sum_volume_percentage'] -
-                    symbol_chart[start_ts + tf_to_test].range_price_volume[str(symbol_chart[start_ts + tf_to_test].last_price_counter)]['sum_volume_percentage'])
-
-        print(max(symbol_cache_vals))
-        print(min(symbol_cache_vals))
-
-
-
-
-    rise_percentage = {}
-    volume_rise_percentage = {}
-    for symbol, trades in symçbol_charts.items():
-        for trade in trades:
-            if not trade.start_ts + (ONE_HOUR_IN_MS / 2) > trade.end_ts:
-                print("here")
-        difference = values.rise_start_ts
-        rise_percentage.set_default(symbol, []).append()
-
-    start_ts = query_get_oldest_timeframe('trades_chart_240_minutes', DEFAULT_COL_SEARCH, 'start_ts')
-    #for symbol in db_conn('trades_chart_240_minutes').list_collection_names():
-    for trade in symbol_chart:
-        trade['sum_volume_percentage'] = trade['range_price_volume'][str(trade['last_price_counter'])]['sum_volume_percentage']
-    b = query_column_between('trades_chart_240_minutes', "fund_data", start_ts, start_ts + ONE_DAY_IN_MS, 'start_ts')
 
 
 
