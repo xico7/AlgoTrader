@@ -170,6 +170,28 @@ class ValidatorDB(DB, ABC):
         self.__getattr__(self.start_ts_collection).insert_one({START_TS: start_ts})
 
 
+class TradesChartValidatorDB(ValidatorDB, ABC):
+    def __init__(self, validate_db_name):
+        super().__init__(validate_db_name)
+        self.valid_end_ts_collection = self.validate_db_name + VALID_END_TS_VALIDATOR_DB_SUFFIX
+        valid_end_ts_data = self.__getattr__(self.valid_end_ts_collection).find_one()
+        self.valid_end_ts = valid_end_ts_data[VALID_END_TS] if valid_end_ts_data else None
+
+    def set_valid_end_ts(self, start_ts, valid_end_ts, timestamp_doc_key='start_ts'):
+        if not self.valid_end_ts:  # init validator db end_ts.
+            self.__getattr__(self.valid_end_ts_collection).insert_one({VALID_END_TS: self.finish_ts})
+
+        if not start_ts == self.valid_end_ts + TEN_SECONDS_IN_MS:
+            return
+
+        if DBCol(self.validate_db_name).find_one({timestamp_doc_key: valid_end_ts + TEN_SECONDS_IN_MS}):
+            if not (
+            valid_end_ts := query_last_non_gap_timestamp(self.validate_db_name, valid_end_ts, timestamp_doc_key)):
+                valid_end_ts = DBCol(self.validate_db_name).most_recent_timeframe()
+
+        self.__getattr__(self.valid_end_ts_collection).update_one({}, {'$set': {VALID_END_TS: valid_end_ts}})
+
+
 def list_dbs():
     return mongo_client.list_database_names()
 
@@ -196,6 +218,18 @@ def delete_all_text_dbs(text) -> None:
     for db in list_dbs():
         if text in db:
             delete_db(db)
+
+
+def query_last_non_gap_timestamp(db_name, last_valid_timestamp, timestamp_doc_key, collection=DEFAULT_COL_SEARCH):
+    check_timestamp_gap = last_valid_timestamp
+
+    db_conn = DBCol(db_name, collection)
+    for result in db_conn.column_between(last_valid_timestamp + TEN_SECONDS_IN_MS, db_conn.most_recent_timeframe()):
+        if result[timestamp_doc_key] != check_timestamp_gap + TEN_SECONDS_IN_MS:
+            return result[timestamp_doc_key]
+        check_timestamp_gap = result[timestamp_doc_key]
+
+    return
 
 
 def query_missing_tfs(timeframe_in_minutes: int, symbols: List = [DEFAULT_COL_SEARCH]):
@@ -319,3 +353,29 @@ def create_index_db_cols(db, field) -> None:
 #             existing_trades += list(range(elem, elem + assume_existing_trade_parse_interval, ms_parse_interval))
 #
 #     return existing_trades
+
+
+def clear_trades_chart():
+    def clear_trades_chart_timeframe(timeframe):
+        key = 'start_ts'
+        if missing_timeframes := query_missing_tfs(timeframe):
+            earliest_missing_tf = missing_timeframes[0][0]
+            DB(trades_chart.format(timeframe)).clear_higher_than(earliest_missing_tf, key)
+            print(f"Cleared db '{timeframe}' documents with key '{key}' higher than '{earliest_missing_tf}'.")
+
+    trades_chart_timeframes = [60, 120, 240, 480, 1440, ONE_DAY_IN_MINUTES * 2, ONE_DAY_IN_MINUTES * 4, 11520]
+
+    for timeframe in trades_chart_timeframes:
+        clear_trades_chart_timeframe(timeframe)
+
+
+def set_trades_chart_valid_end_ts():
+    clear_trades_chart()
+    trades_chart_timeframes = [60, 120, 240, 480, 1440, ONE_DAY_IN_MINUTES * 2, ONE_DAY_IN_MINUTES * 4, ONE_DAY_IN_MINUTES * 8]
+    for timeframe in trades_chart_timeframes:
+        end_ts = DBCol(trades_chart.format(timeframe), DEFAULT_COL_SEARCH).most_recent_timeframe()
+        trades_chart_val_db = TradesChartValidatorDB(trades_chart.format(timeframe))
+        trades_chart_val_db.__getattr__(trades_chart_val_db.valid_end_ts_collection).delete_many({})
+        trades_chart_val_db.__getattr__(trades_chart_val_db.valid_end_ts_collection).insert_one({VALID_END_TS: end_ts})
+
+#set_trades_chart_valid_end_ts()
