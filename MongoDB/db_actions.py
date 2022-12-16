@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 from pymongo import MongoClient, database
 import logs
 from data_handling.data_helpers.data_staging import get_current_second_in_ms, mins_to_ms
-from data_handling.data_helpers.vars_constants import MongoDB, DEFAULT_COL_SEARCH, END_TS_VALIDATOR_DB_SUFFIX, \
-    VALIDATOR_DB, END_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECS_PARSED_TRADES_DB, TEN_SECONDS_IN_MS, \
-    ONE_DAY_IN_MINUTES
+from data_handling.data_helpers.vars_constants import MongoDB, DEFAULT_COL_SEARCH, FINISH_TS_VALIDATOR_DB_SUFFIX, \
+    VALIDATOR_DB, FINISH_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECS_PARSED_TRADES_DB, TEN_SECONDS_IN_MS, \
+    ONE_DAY_IN_MINUTES, VALID_END_TS_VALIDATOR_DB_SUFFIX, VALID_END_TS
 
 ATOMIC_TIMEFRAME_CHART_TRADES = 5
 done_trades_chart_tf = "parsed_timestamp_trades_chart_{}_minutes"
@@ -138,33 +138,39 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
 
 
 class DB(pymongo.database.Database, metaclass=ABCMeta):
+
     def __init__(self, db_name):
         self.db_name = db_name
         super().__init__(mongo_client, self.db_name)
         if not isinstance(self, ValidatorDB):
-            self.end_ts = ValidatorDB(self.db_name).end_ts
+            self.finish_ts = ValidatorDB(self.db_name).finish_ts
+
+    def clear_higher_than(self, timestamp: int, document: str) -> None:
+        for symbol in self.list_collection_names():
+            getattr(self, symbol).delete_many({document: {MongoDB.HIGHER_EQ: timestamp}})
 
 
 class ValidatorDB(DB, ABC):
-    def __init__(self, db_to_validate_name):
+    def __init__(self, validate_db_name):
         self.db_name = VALIDATOR_DB
-        self.validate_db_name = db_to_validate_name
-        self.end_ts_collection = self.validate_db_name + END_TS_VALIDATOR_DB_SUFFIX
+        self.validate_db_name = validate_db_name
+        self.finish_ts_collection = self.validate_db_name + FINISH_TS_VALIDATOR_DB_SUFFIX
         self.start_ts_collection = self.validate_db_name + START_TS_VALIDATOR_DB_SUFFIX
 
         super().__init__(self.db_name)
-        end_ts_data = self.__getattr__(self.end_ts_collection).find_one()
+
+        finish_ts_data = self.__getattr__(self.finish_ts_collection).find_one()
         start_ts_data = self.__getattr__(self.start_ts_collection).find_one()
 
-        self.end_ts = end_ts_data[END_TS] if end_ts_data else None
+        self.finish_ts = finish_ts_data[FINISH_TS] if finish_ts_data else None
         self.start_ts = start_ts_data[START_TS] if start_ts_data else None
 
-    def set_end_ts(self, end_ts):
-        if not self.end_ts:  # init validator db end_ts.
-            self.__getattr__(self.end_ts_collection).insert_one({END_TS: end_ts})
+    def set_finish_ts(self, finish_ts):
+        if not self.finish_ts:  # init validator db end_ts.
+            self.__getattr__(self.finish_ts_collection).insert_one({FINISH_TS: finish_ts})
 
-        if end_ts > self.__getattr__(self.end_ts_collection).find_one({})[END_TS]:
-            self.__getattr__(self.end_ts_collection).update_one({}, {'$set': {END_TS: end_ts}})
+        if finish_ts > self.__getattr__(self.finish_ts_collection).find_one({})[FINISH_TS]:
+            self.__getattr__(self.finish_ts_collection).update_one({}, {'$set': {FINISH_TS: finish_ts}})
 
     def set_start_ts(self, start_ts):
         self.__getattr__(self.start_ts_collection).insert_one({START_TS: start_ts})
@@ -251,7 +257,6 @@ def query_missing_tfs(timeframe_in_minutes: int, symbols: List = [DEFAULT_COL_SE
                 parsed_tfs = set([trade['start_ts'] for trade in check_partial_trades])
                 missing_tfs = set(list(range(init_ts, init_ts + append_ts, TEN_SECONDS_IN_MS))) - parsed_tfs
                 possible_missing_tfs.setdefault(symbol, []).append(missing_tfs)
-            time.sleep(0.1)
             init_ts += append_ts
         else:
             left_timeframe = end_ts - init_ts
