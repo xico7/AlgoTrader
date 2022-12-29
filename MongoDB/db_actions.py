@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from abc import ABCMeta, ABC
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union, Iterator, List, NamedTuple
+from typing import Optional, Union, Iterator, NamedTuple, Type
 from typing import TYPE_CHECKING
 import pymongo
 
@@ -59,32 +60,38 @@ class DBMapper(Enum):
     trades_chart_2880_minutes = DBData('trades_chart_2880_minutes', Index('start_ts', True))
     trades_chart_5760_minutes = DBData('trades_chart_5760_minutes', Index('start_ts', True))
     trades_chart_11520_minutes = DBData('trades_chart_11520_minutes', Index('start_ts', True))
+    relative_volumes_60_minutes = DBData('relative_volumes_60_minutes', Index('timestamp', True))
+    relative_volumes_120_minutes = DBData('relative_volumes_120_minutes', Index('timestamp', True))
+    relative_volumes_240_minutes = DBData('relative_volumes_240_minutes', Index('timestamp', True))
+    relative_volumes_480_minutes = DBData('relative_volumes_480_minutes', Index('timestamp', True))
+    relative_volumes_1440_minutes = DBData('relative_volumes_1440_minutes', Index('timestamp', True))
 
 
 class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
     USE_INTERNAL_MAPPED_TIMESTAMP = object()
 
-    def __init__(self, db_name, collection=DEFAULT_COL_SEARCH):
-        self.db_name = db_name
-        self.collection = collection
+    def __init__(self, db_instance_or_name: [DB, str], collection=DEFAULT_COL_SEARCH):
+        self._db_name = db_instance_or_name
+
         try:
-            if tf_index := DBMapper.__getitem__(self.db_name).value.timeframe_index:
-                self.timestamp_doc_key = tf_index.document
-            else:
-                self.timestamp_doc_key = tf_index
+            self._timestamp_doc_key = DBMapper.__getitem__(self._db_name).value.timeframe_index.document
         except KeyError:
-            LOG.error(f"DB '{self.db_name}' does not have mapped data, this is undesirable as it means no indexes will be created.")
-            raise InvalidDBMapperConfiguration(f"DB '{self.db_name}' does not have mapped data, this is undesirable as it means no indexes will be created.")
-        super().__init__(DB(self.db_name), self.collection)
+            self._timestamp_doc_key = None
+
+        self._collection = collection
+        if isinstance(db_instance_or_name, DB):
+            super().__init__(db_instance_or_name, self._collection)
+        else:
+            super().__init__(DB(self._db_name), self._collection)
 
     def column_between(self, lower_bound, higher_bound, doc_key=USE_INTERNAL_MAPPED_TIMESTAMP, limit=0, sort_value=pymongo.DESCENDING,
                        ReturnType: Union[Optional, TradesTAIndicators, TradeData] = None) -> Iterator:
         if not self.find_one({}):
-            LOG.error(f"Queried Collection {self.collection}' does not exist for db '{self.db_name}'.")
-            raise EmptyDBCol(f"Queried Collection '%s' does not exist for db '%s'.", self.collection, self.db_name)
+            LOG.error(f"Queried Collection {self._collection}' does not exist for db '{self._db_name}'.")
+            raise EmptyDBCol(f"Queried Collection '%s' does not exist for db '%s'.", self._collection, self._db_name)
 
         if doc_key == self.USE_INTERNAL_MAPPED_TIMESTAMP:
-            doc_key = self.timestamp_doc_key
+            doc_key = self._timestamp_doc_key
             if not doc_key:
                 LOG.error("Document key needs to be provided as default internal one is not valid.")
                 raise InvalidDocumentKeyProvided("Document key needs to be provided as default internal one is not valid.")
@@ -96,18 +103,25 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             yield i if not ReturnType else ReturnType(**i)
 
     def most_recent_timeframe(self, document_key=None) -> Optional[float]:
-        return self._doc_key_endpoint(True,  document_key if document_key else self.timestamp_doc_key)
+        if document_key:
+            return self._doc_key_endpoint(True, document_key)
+        else:
+            return self._doc_key_endpoint(True)
 
     def oldest_timeframe(self, document_key=None) -> Optional[float]:
-        return self._doc_key_endpoint(False, document_key if document_key else self.timestamp_doc_key)
+        if document_key:
+            return self._doc_key_endpoint(False, document_key)
+        else:
+            return self._doc_key_endpoint(False)
 
-    def _doc_key_endpoint(self, most_recent: bool, doc_key) -> Optional[float]:
+    def _doc_key_endpoint(self, most_recent: bool, doc_key=None) -> Optional[float]:
+        doc_key = doc_key if doc_key else self._timestamp_doc_key
         try:
             endpoint_1 = next(self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1, sort_value=-1))
             endpoint_2 = next(self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1, sort_value=1))
         except StopIteration as e:
-            LOG.error("Collection '%s' from database '%s' contains no data with key '%s'.", self.collection, self.db_name, doc_key)
-            raise InvalidDataProvided(f"Collection '{self.collection}' from database '{self.db_name}' contains no data with key '{doc_key}'.") from e
+            LOG.error("Collection '%s' from database '%s' contains no data with key '%s'.", self._collection, self._db_name, doc_key)
+            raise InvalidDataProvided(f"Collection '{self._collection}' from database '{self._db_name}' contains no data with key '{doc_key}'.") from e
         if endpoint_1 and endpoint_2:
             endpoint_tfs = endpoint_1[doc_key], endpoint_2[doc_key]
             try:
@@ -123,9 +137,9 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             return None
 
     def _init_indexes(self):
-        if self.timestamp_doc_key and not self.find_one({}):
-            self.create_index([(self.timestamp_doc_key, -1)],
-                              unique=DBMapper.__getitem__(self.db_name).value.timeframe_index.unique)
+        if self._timestamp_doc_key and not self.find_one({}):
+            self.create_index([(self._timestamp_doc_key, -1)],
+                              unique=DBMapper.__getitem__(self._db_name).value.timeframe_index.unique)
 
     def insert_one(self, data):
         self._init_indexes()
@@ -138,16 +152,28 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
 
 
 class DB(pymongo.database.Database, metaclass=ABCMeta):
-
     def __init__(self, db_name):
         self.db_name = db_name
         super().__init__(mongo_client, self.db_name)
         if not isinstance(self, ValidatorDB):
-            self.finish_ts = ValidatorDB(self.db_name).finish_ts
+            self.end_ts = ValidatorDB(self.db_name).finish_ts
 
-    def clear_higher_than(self, timestamp: int, document: str) -> None:
+    def __getattr__(self, collection):
+        return DBCol(self, collection)
+
+    def clear_higher_than(self, timestamp: int, document_key: str) -> None:
         for symbol in self.list_collection_names():
-            getattr(self, symbol).delete_many({document: {MongoDB.HIGHER_EQ: timestamp}})
+            getattr(self, symbol).delete_many({document_key: {MongoDB.HIGHER_EQ: timestamp}})
+
+    def clear_between(self, timestamp_lower_bound, timestamp_higher_bound, document_key):
+        for symbol in self.list_collection_names():
+            getattr(self, symbol).delete_many({MongoDB.AND: [{document_key: {MongoDB.HIGHER_EQ: timestamp_lower_bound}},
+                                                             {document_key: {MongoDB.LOWER_EQ: timestamp_higher_bound}}]})
+
+    def delete_collections_with_text(self, text) -> None:
+        for col in self.list_collection_names():
+            if text in col:
+                self.drop_collection(col)
 
 
 class ValidatorDB(DB, ABC):
@@ -177,25 +203,38 @@ class ValidatorDB(DB, ABC):
 
 
 class TradesChartValidatorDB(ValidatorDB, ABC):
-    def __init__(self, validate_db_name):
-        super().__init__(validate_db_name)
+    def __init__(self, trades_chart_timeframe: [int, str]):
+        super().__init__(trades_chart.format(trades_chart_timeframe))
+
+        self.trades_chart_time_intervals_db = self.validate_db_name + "_time_intervals"
         self.valid_end_ts_collection = self.validate_db_name + VALID_END_TS_VALIDATOR_DB_SUFFIX
         valid_end_ts_data = self.__getattr__(self.valid_end_ts_collection).find_one()
         self.valid_end_ts = valid_end_ts_data[VALID_END_TS] if valid_end_ts_data else None
 
-    def set_valid_end_ts(self, start_ts, valid_end_ts, timestamp_doc_key='start_ts'):
-        if not self.valid_end_ts:  # init validator db end_ts.
-            self.__getattr__(self.valid_end_ts_collection).insert_one({VALID_END_TS: self.finish_ts})
+    def update_valid_end_ts(self, start_ts, end_ts):
+        self.__getattr__(self.trades_chart_time_intervals_db).insert_one({'start_ts': start_ts, 'end_ts': end_ts})
 
-        if not start_ts == self.valid_end_ts + TEN_SECONDS_IN_MS:
-            return
+        start_ts = []
+        end_ts = []
+        trades_chart_db_col_conn = self.__getattr__(self.trades_chart_time_intervals_db)
+        time_intervals = trades_chart_db_col_conn.column_between(
+            trades_chart_db_col_conn.oldest_timeframe('start_ts'), trades_chart_db_col_conn.most_recent_timeframe('start_ts'), 'start_ts')
 
-        if DBCol(self.validate_db_name).find_one({timestamp_doc_key: valid_end_ts + TEN_SECONDS_IN_MS}):
-            if not (
-            valid_end_ts := query_last_non_gap_timestamp(self.validate_db_name, valid_end_ts, timestamp_doc_key)):
-                valid_end_ts = DBCol(self.validate_db_name).most_recent_timeframe()
+        for tf in time_intervals:
+            start_ts.append(tf['start_ts'])
+            end_ts.append(tf['end_ts'])
 
-        self.__getattr__(self.valid_end_ts_collection).update_one({}, {'$set': {VALID_END_TS: valid_end_ts}})
+        for tf in end_ts:
+            if tf + TEN_SECONDS_IN_MS not in start_ts:
+                if not self.valid_end_ts:
+                    self.__getattr__(self.valid_end_ts_collection).insert_one({VALID_END_TS: tf})
+                else:
+                    self.__getattr__(self.valid_end_ts_collection).update_one({}, {'$set': {VALID_END_TS: tf}})
+                    return True
+
+        for tf in time_intervals:
+            if tf['end_ts'] <= self.valid_end_ts:
+                trades_chart_db_col_conn.delete_one({'end_ts': tf['end_ts']})
 
 
 def list_dbs():
@@ -203,8 +242,8 @@ def list_dbs():
 
 
 def ten_seconds_symbols_filled_data(symbols, start_ts, end_ts):
-    from data_handling.data_func import TradesTAIndicators, get_trade_data_group
-    trade_data = get_trade_data_group(symbols, start_ts, end_ts - 1, TEN_SECS_PARSED_TRADES_DB, filled=True)
+    from data_handling.data_func import TradesTAIndicators, make_trade_data_group
+    trade_data = make_trade_data_group(symbols, start_ts, end_ts - 1, TEN_SECS_PARSED_TRADES_DB, filled=True)
     return {symbol: TradesTAIndicators(
         **{'trades': getattr(trade_data, symbol), 'start_ts': start_ts, 'end_ts': end_ts}) for symbol in symbols}
 
@@ -220,65 +259,50 @@ def delete_dbs_all():
             mongo_client.drop_database(db_name)
 
 
-def delete_all_text_dbs(text) -> None:
+def delete_dbs_with_text(text) -> None:
     for db in list_dbs():
         if text in db:
             delete_db(db)
 
 
-def query_last_non_gap_timestamp(db_name, last_valid_timestamp, timestamp_doc_key, collection=DEFAULT_COL_SEARCH):
-    check_timestamp_gap = last_valid_timestamp
-
-    db_conn = DBCol(db_name, collection)
-    for result in db_conn.column_between(last_valid_timestamp + TEN_SECONDS_IN_MS, db_conn.most_recent_timeframe()):
-        if result[timestamp_doc_key] != check_timestamp_gap + TEN_SECONDS_IN_MS:
-            return result[timestamp_doc_key]
-        check_timestamp_gap = result[timestamp_doc_key]
-
-    return
-
-
-def query_missing_tfs(timeframe_in_minutes: int, symbols: List = [DEFAULT_COL_SEARCH]):
+def query_charts_missing_tfs(timeframe_in_minutes: int):
     chart_tf_db = trades_chart.format(timeframe_in_minutes)
-    mins_to_validate_at_a_time = ONE_DAY_IN_MINUTES * 10
+    mins_to_validate_at_a_time = ONE_DAY_IN_MINUTES
     accepted_trades_number = mins_to_validate_at_a_time * 6 + 1
     append_ts = mins_to_ms(mins_to_validate_at_a_time)
 
     missing_timeframes = []
 
-    for symbol in symbols:
-        possible_missing_tfs = {}
-        init_ts = save_init_ts = DBCol(chart_tf_db, symbol).oldest_timeframe()
-        end_ts = DBCol(chart_tf_db, symbol).most_recent_timeframe()
+    for symbol in DB(trades_chart.format(timeframe_in_minutes)).list_collection_names():
+        if not (init_ts := TradesChartValidatorDB(chart_tf_db).valid_end_ts):
+            init_ts = DBCol(chart_tf_db, symbol).oldest_timeframe()
 
+        end_ts = DBCol(chart_tf_db, symbol).most_recent_timeframe()
         while init_ts + append_ts <= end_ts:
             check_partial_trades = list(DBCol(chart_tf_db, symbol).column_between(init_ts, init_ts + append_ts))
             if len(check_partial_trades) != accepted_trades_number:
                 parsed_tfs = set([trade['start_ts'] for trade in check_partial_trades])
-                missing_tfs = set(list(range(init_ts, init_ts + append_ts, TEN_SECONDS_IN_MS))) - parsed_tfs
-                possible_missing_tfs.setdefault(symbol, []).append(missing_tfs)
+                missing_timeframes.append(set(list(range(init_ts, init_ts + append_ts, TEN_SECONDS_IN_MS))) - parsed_tfs)
             init_ts += append_ts
         else:
             left_timeframe = end_ts - init_ts
             parsed_tfs = set([trade['start_ts'] for trade in DBCol(chart_tf_db, symbol).column_between(init_ts, init_ts + left_timeframe)])
-            missing_tfs = set(list(range(init_ts, init_ts + left_timeframe, TEN_SECONDS_IN_MS))) - parsed_tfs
-            possible_missing_tfs.setdefault(symbol, []).append(missing_tfs)
+            missing_timeframes.append(set(list(range(init_ts, init_ts + left_timeframe, TEN_SECONDS_IN_MS))) - parsed_tfs)
 
-        concatenated_lists = []
-        if possible_missing_tfs:
-            for list_elem in possible_missing_tfs[symbol]:
-                concatenated_lists += list(list_elem)
+    merged_missing_tfs = set().union(*missing_timeframes)
 
-        started_tf = False
-        for elem in range(save_init_ts, end_ts, TEN_SECONDS_IN_MS):
-            if elem in concatenated_lists and not started_tf:
-                started_tf = True
-                init_miss_val = elem
-            if elem not in concatenated_lists and started_tf:
-                missing_timeframes.append([init_miss_val, elem - 10000])
-                started_tf = False
+    missing_tf_intervals = []
+    started_tf = False
 
-    return missing_timeframes
+    for elem in range(min(merged_missing_tfs), max(merged_missing_tfs), TEN_SECONDS_IN_MS):
+        if elem in merged_missing_tfs and not started_tf:
+            started_tf = True
+            init_miss_val = elem
+        if elem not in merged_missing_tfs and started_tf:
+            missing_tf_intervals.append([init_miss_val, elem - TEN_SECONDS_IN_MS])
+            started_tf = False
+
+    return missing_tf_intervals
 
 #btc = query_missing_tfs(1440, ['BTCUSDT'])
 # xtz = validate_fix_trade_data_dbs(1440, ['XTZUSDT'])
@@ -344,7 +368,8 @@ def create_index_db_cols(db, field) -> None:
 # print("here")
 # query_starting_ts('parsed_aggtrades', 'adausdt')
 # insert_one_db('end_timestamp_aggtrades_validator_db', 'timestamp', {'timestamp': 1640955601009})
-# delete_all_text_dbs("chart")
+# delete_dbs_with_text("trades_chart")
+# DB("Timestamps_Validator").delete_collections_with_text("trades_chart")
 
 
 # def query_existing_ws_trades(start_ts, end_ts, ms_parse_interval):  # If BTCUSDT has trades working it assumes all other symbols were working.
@@ -360,27 +385,49 @@ def create_index_db_cols(db, field) -> None:
 #     return existing_trades
 
 
-def clear_trades_chart():
-    def clear_trades_chart_timeframe(timeframe):
-        key = 'start_ts'
-        if missing_timeframes := query_missing_tfs(timeframe):
-            earliest_missing_tf = missing_timeframes[0][0]
-            DB(trades_chart.format(timeframe)).clear_higher_than(earliest_missing_tf, key)
-            print(f"Cleared db '{timeframe}' documents with key '{key}' higher than '{earliest_missing_tf}'.")
+def clear_trades_chart(timeframe):
+    key = 'start_ts'
+    if missing_timeframes := query_charts_missing_tfs(timeframe):
+        earliest_missing_tf = missing_timeframes[0][0]
+        DB(trades_chart.format(timeframe)).clear_higher_than(earliest_missing_tf, key)
+        print(f"Cleared db '{timeframe}' documents with key '{key}' higher than '{earliest_missing_tf}'.")
 
-    trades_chart_timeframes = [60, 120, 240, 480, 1440, ONE_DAY_IN_MINUTES * 2, ONE_DAY_IN_MINUTES * 4, 11520]
-
-    for timeframe in trades_chart_timeframes:
-        clear_trades_chart_timeframe(timeframe)
+#clear_trades_chart(60)
 
 
-def set_trades_chart_valid_end_ts():
-    clear_trades_chart()
-    trades_chart_timeframes = [60, 120, 240, 480, 1440, ONE_DAY_IN_MINUTES * 2, ONE_DAY_IN_MINUTES * 4, ONE_DAY_IN_MINUTES * 8]
-    for timeframe in trades_chart_timeframes:
-        end_ts = DBCol(trades_chart.format(timeframe), DEFAULT_COL_SEARCH).most_recent_timeframe()
-        trades_chart_val_db = TradesChartValidatorDB(trades_chart.format(timeframe))
-        trades_chart_val_db.__getattr__(trades_chart_val_db.valid_end_ts_collection).delete_many({})
-        trades_chart_val_db.__getattr__(trades_chart_val_db.valid_end_ts_collection).insert_one({VALID_END_TS: end_ts})
+def set_clear_trades_chart_valid_end_ts(timeframe: int):
+    clear_trades_chart(timeframe)
+    end_ts = DBCol(trades_chart.format(timeframe), DEFAULT_COL_SEARCH).most_recent_timeframe()
+    trades_chart_val_db = TradesChartValidatorDB(trades_chart.format(timeframe))
+    trades_chart_val_db.__getattr__(trades_chart_val_db.valid_end_ts_collection).delete_many({})
+    trades_chart_val_db.__getattr__(trades_chart_val_db.valid_end_ts_collection).insert_one({VALID_END_TS: end_ts})
+    trades_chart_val_db.__getattr__(trades_chart_val_db.finish_ts_collection).delete_many({})
+    trades_chart_val_db.__getattr__(trades_chart_val_db.finish_ts_collection).insert_one({FINISH_TS: end_ts})
 
-#set_trades_chart_valid_end_ts()
+
+# trades_chart_timeframes = [60, 120, 240, 480, 1440, ONE_DAY_IN_MINUTES * 2, ONE_DAY_IN_MINUTES * 4, ONE_DAY_IN_MINUTES * 8]
+# # #trades_chart_timeframes = [60]
+# for tf in trades_chart_timeframes:
+#     set_clear_trades_chart_valid_end_ts(tf)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

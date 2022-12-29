@@ -1,13 +1,8 @@
 import requests
 import re
 import time
-from typing import Union, List
 
 from data_handling.data_helpers.vars_constants import USDT, BNB, TEN_SECONDS_IN_MS, coingecko_marketcap_api_link, FUND_SYMBOLS_USDT_PAIRS
-
-
-def remove_usdt(symbols: Union[List[str], str]):
-    return [re.match('(^(.+?)USDT)', symbol).groups()[1].lower() for symbol in symbols]
 
 
 def get_current_second_in_ms():
@@ -21,6 +16,10 @@ def seconds_to_ms(seconds):
 
 def mins_to_ms(minutes):
     return seconds_to_ms(minutes) * 60
+
+
+def get_next_millisecond_modulo(start_timestamp, milliseconds: int):
+    return start_timestamp + milliseconds - (start_timestamp % milliseconds)
 
 
 def current_time_in_ms(cur_time_in_secs: float):
@@ -44,10 +43,6 @@ def coin_ratio_marketcap():
                                                       "marketcap": symbol_data['market_cap']}
 
     return symbols_price_weight_marketcap
-
-
-def remove_none_values(object: dict):
-    return {k: v for k, v in object.items() if v is not None}
 
 
 def usdt_with_bnb_symbols() -> list:

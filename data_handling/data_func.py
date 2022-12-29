@@ -11,7 +11,7 @@ from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, TS, DEFAU
     TEN_SECS_PARSED_TRADES_DB, PARSED_AGGTRADES_DB, MARKETCAP, DEFAULT_TIMEFRAME_IN_MS, \
     END_TS_AGGTRADES_VALIDATOR_DB, DEFAULT_PARSE_INTERVAL_IN_MS, TEN_SECONDS_IN_MS, FUND_DATA_COLLECTION, START_TS_AGGTRADES_VALIDATOR_DB, TRADE_DATA_CACHE_TIME_IN_MS, DEFAULT_SYMBOL_SEARCH, TRADE_DATA_PYTHON_CACHE_SIZE
 from dataclasses import dataclass, asdict
-from MongoDB.db_actions import DB, DBCol, ValidatorDB, TradesChartValidatorDB
+from MongoDB.db_actions import DB, DBCol, ValidatorDB, TradesChartValidatorDB, trades_chart
 from data_handling.data_helpers.data_staging import round_last_ten_secs
 
 
@@ -51,9 +51,10 @@ class CacheAggtrades(dict):
 
 
 class CacheTradeData(dict):
-    def __init__(self, db_name, symbols, ignore_dup_keys=False):
+    def __init__(self, timeframe, symbols, ignore_dup_keys=False):
         super().__init__()
-        self.db_name = db_name
+        self.db_name = trades_chart.format(timeframe)
+        self.timeframe = timeframe
         self.symbols = symbols
         self._cache_db = {}
         self.ignore_keys = ignore_dup_keys
@@ -84,19 +85,16 @@ class CacheTradeData(dict):
         start_ts = self._cache_db[DEFAULT_SYMBOL_SEARCH]['1']['start_ts']
         end_ts = self._cache_db[DEFAULT_SYMBOL_SEARCH][str(len(self._cache_db[DEFAULT_SYMBOL_SEARCH]))]['start_ts']
 
-        validator_db = TradesChartValidatorDB(self.db_name)
+        validator_db = TradesChartValidatorDB(self.timeframe)
         if not validator_db.start_ts:
-            TradesChartValidatorDB(self.db_name).set_start_ts(start_ts)
-
-
-        validator_db.set_valid_end_ts(start_ts, end_ts)
+            TradesChartValidatorDB(self.timeframe).set_start_ts(start_ts)
         validator_db.set_finish_ts(end_ts)
 
         for symbol, cached_trades in self._cache_db.items():
             try:
                 DBCol(self.db_name, symbol).insert_many(list(cached_trades.values()))
             except BulkWriteError:
-                LOG.warning("Duplicate key while trying to insert data in DB '%s' for symbol '%s' "
+                LOG.error("Duplicate key while trying to insert data in DB '%s' for symbol '%s' "
                             "with start ts of '%s' and end ts of '%s'", self.db_name, symbol, start_ts, end_ts)
                 raise
 
@@ -139,15 +137,13 @@ class TradeDataGroup(Trades):
             end_ts = getattr(self, DEFAULT_SYMBOL_SEARCH)[0].timestamp
             for symbol in dataclasses.fields(self):
                 del getattr(self, symbol.name)[0]
-            refresh_cache = get_trade_data_group(chart_filtered_symbols, end_ts + TEN_SECONDS_IN_MS,
-                                                 end_ts + TRADE_DATA_CACHE_TIME_IN_MS, TEN_SECS_PARSED_TRADES_DB, filled=True)
+            refresh_cache = make_trade_data_group(chart_filtered_symbols, end_ts + TEN_SECONDS_IN_MS,
+                                                  end_ts + TRADE_DATA_CACHE_TIME_IN_MS, TEN_SECS_PARSED_TRADES_DB, filled=True)
             for symbol in dataclasses.fields(refresh_cache):
                 setattr(self, symbol.name, getattr(refresh_cache, symbol.name))
         else:
             for symbol in dataclasses.fields(self):
                 del getattr(self, symbol.name)[0]
-
-
 
 
 @init_only_existing
@@ -181,7 +177,7 @@ class TradeData:
         return self
 
 
-def get_trade_data_group(symbols: list, start_ts: [int, dict], end_ts, trades_db, filled: bool = False):
+def make_trade_data_group(symbols: list, start_ts: [int, dict], end_ts, trades_db, filled: bool = False):
     start_ts = {symbol: start_ts for symbol in symbols} if not isinstance(start_ts, dict) else start_ts
     end_ts = {symbol: end_ts for symbol in symbols} if not isinstance(end_ts, dict) else end_ts
 
@@ -312,7 +308,7 @@ class Trade:
             self.ts_data[symbol] = {}
 
     def add_trades(self, symbols: list, start_ts: Dict[str, float], end_ts: Dict[str, float]):
-        trade_data_group = get_trade_data_group(symbols, start_ts, end_ts, PARSED_AGGTRADES_DB)
+        trade_data_group = make_trade_data_group(symbols, start_ts, end_ts, PARSED_AGGTRADES_DB)
 
         for symbol in symbols:
             for trade in getattr(trade_data_group, symbol):
