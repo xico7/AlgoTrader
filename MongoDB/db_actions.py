@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import logging
 import time
 from abc import ABCMeta, ABC
@@ -113,6 +112,9 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             return self._doc_key_endpoint(False, document_key)
         else:
             return self._doc_key_endpoint(False)
+
+    def all_tf_column(self, column_name):
+        return self.column_between(self.oldest_timeframe(column_name), self.most_recent_timeframe(column_name), column_name)
 
     def _doc_key_endpoint(self, most_recent: bool, doc_key=None) -> Optional[float]:
         doc_key = doc_key if doc_key else self._timestamp_doc_key
@@ -242,7 +244,7 @@ def list_dbs():
 
 
 def ten_seconds_symbols_filled_data(symbols, start_ts, end_ts):
-    from data_handling.data_func import TradesTAIndicators, make_trade_data_group
+    from data_handling.data_structures import TradesTAIndicators, make_trade_data_group
     trade_data = make_trade_data_group(symbols, start_ts, end_ts - 1, TEN_SECS_PARSED_TRADES_DB, filled=True)
     return {symbol: TradesTAIndicators(
         **{'trades': getattr(trade_data, symbol), 'start_ts': start_ts, 'end_ts': end_ts}) for symbol in symbols}
@@ -265,7 +267,7 @@ def delete_dbs_with_text(text) -> None:
             delete_db(db)
 
 
-def query_charts_missing_tfs(timeframe_in_minutes: int):
+def query_charts_missing_tfs(timeframe_in_minutes: int, symbols=['BTCUSDT']):
     chart_tf_db = trades_chart.format(timeframe_in_minutes)
     mins_to_validate_at_a_time = ONE_DAY_IN_MINUTES
     accepted_trades_number = mins_to_validate_at_a_time * 6 + 1
@@ -273,7 +275,8 @@ def query_charts_missing_tfs(timeframe_in_minutes: int):
 
     missing_timeframes = []
 
-    for symbol in DB(trades_chart.format(timeframe_in_minutes)).list_collection_names():
+    for symbol in symbols:
+    #for symbol in DB(trades_chart.format(timeframe_in_minutes)).list_collection_names():
         if not (init_ts := TradesChartValidatorDB(chart_tf_db).valid_end_ts):
             init_ts = DBCol(chart_tf_db, symbol).oldest_timeframe()
 
@@ -294,13 +297,14 @@ def query_charts_missing_tfs(timeframe_in_minutes: int):
     missing_tf_intervals = []
     started_tf = False
 
-    for elem in range(min(merged_missing_tfs), max(merged_missing_tfs), TEN_SECONDS_IN_MS):
-        if elem in merged_missing_tfs and not started_tf:
-            started_tf = True
-            init_miss_val = elem
-        if elem not in merged_missing_tfs and started_tf:
-            missing_tf_intervals.append([init_miss_val, elem - TEN_SECONDS_IN_MS])
-            started_tf = False
+    if merged_missing_tfs:
+        for elem in range(min(merged_missing_tfs), max(merged_missing_tfs), TEN_SECONDS_IN_MS):
+            if elem in merged_missing_tfs and not started_tf:
+                started_tf = True
+                init_miss_val = elem
+            if elem not in merged_missing_tfs and started_tf:
+                missing_tf_intervals.append([init_miss_val, elem - TEN_SECONDS_IN_MS])
+                started_tf = False
 
     return missing_tf_intervals
 
@@ -316,7 +320,6 @@ def query_charts_missing_tfs(timeframe_in_minutes: int):
 # validate_fix_trade_data_dbs(60)
 # print("here5")
 
-# delete_all_text_dbs("chart")
 
 
 def create_index_db_cols(db, field) -> None:
@@ -368,8 +371,9 @@ def create_index_db_cols(db, field) -> None:
 # print("here")
 # query_starting_ts('parsed_aggtrades', 'adausdt')
 # insert_one_db('end_timestamp_aggtrades_validator_db', 'timestamp', {'timestamp': 1640955601009})
-# delete_dbs_with_text("trades_chart")
-# DB("Timestamps_Validator").delete_collections_with_text("trades_chart")
+
+# delete_dbs_with_text("relative_vol")
+# DB("Timestamps_Validator").delete_collections_with_text("relative_vol")
 
 
 # def query_existing_ws_trades(start_ts, end_ts, ms_parse_interval):  # If BTCUSDT has trades working it assumes all other symbols were working.

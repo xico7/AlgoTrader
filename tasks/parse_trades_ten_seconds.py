@@ -1,7 +1,7 @@
 import logging
 import time
 import logs
-from data_handling.data_func import SymbolsTimeframeTrade, FundTimeframeTrade
+from data_handling.data_structures import SymbolsTimeframeTrade, FundTimeframeTrade
 from data_handling.data_helpers.data_staging import coin_ratio_marketcap
 from data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS
 

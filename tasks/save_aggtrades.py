@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 import logs
 from MongoDB.db_actions import DB
-from data_handling.data_func import CacheAggtrades
+from data_handling.data_structures import CacheAggtrades
 from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols, current_time_in_ms, mins_to_ms
 from data_handling.data_helpers.vars_constants import ONE_SECONDS_IN_MS, PARSED_AGGTRADES_DB
 from binance import Client
@@ -19,8 +19,7 @@ def save_aggtrades():
         start_ts = 1640955600000
 
     parse_minutes = 30
-    binance_client = Client(
-        BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 80})  # ignore highlight, bugged typing in binance lib.
+    binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 80})  # ignore highlight, bugged typing in binance lib.
 
     while start_ts < current_time_in_ms(time.time()):
         end_ts = start_ts + mins_to_ms(parse_minutes)

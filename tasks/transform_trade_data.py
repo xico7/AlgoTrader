@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 import logs
-from data_handling.data_func import make_trade_data_group, CacheTradeData
+from data_handling.data_structures import make_trade_data_group, CacheTradeData
 from data_handling.data_helpers.vars_constants import DEFAULT_SYMBOL_SEARCH, TEN_SECS_PARSED_TRADES_DB, \
     TRADE_DATA_CACHE_TIME_IN_MS, UNUSED_CHART_TRADE_SYMBOLS, TEN_SECONDS_IN_MS
 from MongoDB.db_actions import ten_seconds_symbols_filled_data, DB, ValidatorDB, TradesChartValidatorDB
@@ -44,6 +44,6 @@ def transform_trade_data(args):
     LOG.info(f"Parsed trade data from {datetime.fromtimestamp(args['multithread_start_end_timeframe'][0] / 1000) } to "
              f"{datetime.fromtimestamp(args['multithread_start_end_timeframe'][1] / 1000) } for a {args['chart_minutes']} timeframe.")
 
-    TradesChartValidatorDB(args['chart_minutes']).update_valid_end_ts(start_ts, finish_ts - mins_to_ms(args['chart_minutes']))
+    TradesChartValidatorDB(args['chart_minutes']).update_valid_end_ts(finish_ts - mins_to_ms(args['chart_minutes']), args['chart_minutes'])
 
     exit(0)

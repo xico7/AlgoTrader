@@ -1,5 +1,6 @@
 import argparse
 import inspect
+from collections import namedtuple
 from inspect import isfunction
 import pkgutil
 import logging
@@ -18,16 +19,25 @@ def get_argparse_execute_functions():
 
     subparser = parent_parser.add_subparsers(dest="command")
 
+    tasks_parser = []
+    tasks_path_name = namedtuple('tasks_path_name', ['root_dir_name', 'name',])
     for element in pkgutil.iter_modules(tasks.__path__):
-        subparser.add_parser(element.name.replace("_", "-"))
+        if element.ispkg:
+            for subdir_element in pkgutil.iter_modules([tasks.__path__._path[0] + f"//{element.name}"]):
+                tasks_parser.append(tasks_path_name(element.name, subdir_element.name))
+        else:
+            tasks_parser.append(tasks_path_name(None, element.name))
+
+    for task in tasks_parser:
+        subparser.add_parser(task.name.replace("_", "-"))
 
     subparser.choices['transform-trade-data'].add_argument(f"--chart-minutes", type=int, required=False, help="Volume percentile data chart timeframe.")
     subparser.choices['transform-trade-data'].add_argument(f"--multithread-start-end-timeframe", type=int, nargs=2, required=True,
                                                            help="Run trade data with given start/end timestamp (timestamp in ms) so it "
                                                                 "can be ran by multiple threads to speed up execution.")
 
-    subparser.choices['tech-analysis-relative-volume'].add_argument(f"--timeframe-in-minutes", type=int, required=True,
-                                                                    help="Relative volume timeframe, in minutes.")
+    subparser.choices['relative-volume'].add_argument(f"--timeframe-in-minutes", type=int, required=True,
+                                                      help="Relative volume timeframe, in minutes.")
 
     parsed_args = vars(parent_parser.parse_args())
 
@@ -35,15 +45,19 @@ def get_argparse_execute_functions():
         return
 
     base_execute_module_name = parsed_args['command'].replace("-", "_")
-    for task in pkgutil.iter_modules(tasks.__path__):
+    for task in tasks_parser:
         if base_execute_module_name == task.name:
-            execute_module_path = f"{tasks.__name__}.{base_execute_module_name}"
+            execute_module_path = f"tasks.{task.root_dir_name}.{base_execute_module_name}" if task.root_dir_name else \
+                f"tasks.{base_execute_module_name}"
 
-            module_objects = vars(getattr(__import__(execute_module_path), base_execute_module_name))
-            execute_module_functions = [obj for obj in module_objects.values() if
+            split_task_path = execute_module_path.split('.')
+            base_module_obj = getattr(__import__(execute_module_path), split_task_path[1])
+            module_objects_vars = vars(getattr(base_module_obj, split_task_path[-1])) if len(split_task_path) == 3 else vars(base_module_obj)
+
+            execute_module_functions = [obj for obj in module_objects_vars.values() if
                                         isfunction(obj) and obj.__module__ == execute_module_path]
-            execute_functions = []
 
+            execute_functions = []
             for function in execute_module_functions:
                 execute_functions.append((function, parsed_args) if inspect.getfullargspec(function).args else (function, None))
 
