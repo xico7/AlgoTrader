@@ -1,40 +1,46 @@
 import logging
-import time
+import itertools
 from datetime import datetime
 import logs
-from MongoDB.db_actions import DB
 from data_handling.data_structures import CacheAggtrades
-from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols, current_time_in_ms, mins_to_ms
-from data_handling.data_helpers.vars_constants import ONE_SECONDS_IN_MS, PARSED_AGGTRADES_DB
+from data_handling.data_helpers.data_staging import usdt_with_bnb_symbols
 from binance import Client
 from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
-def save_aggtrades():
-    LOG.info("Beginning save aggtrades.")
+def save_aggtrades(args):
+    start_ts, end_ts = args['start_ts'], args['end_ts']
 
-    if not (start_ts := DB(PARSED_AGGTRADES_DB).end_ts):
-        start_ts = 1640955600000
+    LOG.info(f"Starting to parse aggtrades from {datetime.fromtimestamp(start_ts / 1000)} to {datetime.fromtimestamp(end_ts / 1000)}.")
 
-    parse_minutes = 30
     binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 80})  # ignore highlight, bugged typing in binance lib.
 
-    while start_ts < current_time_in_ms(time.time()):
-        end_ts = start_ts + mins_to_ms(parse_minutes)
-        cache_symbols_parsed = CacheAggtrades(start_ts, end_ts)
+    def get_next_parse_minutes_trades(symbol, start_ts, end_ts):
+        trades = binance_client.get_aggregate_trades(**{'symbol': symbol, 'startTime': start_ts, 'endTime': end_ts, 'limit': 1000})
 
-        for symbol in usdt_with_bnb_symbols():
-            cache_symbols_parsed.append(symbol, binance_client.get_aggregate_trades(**{'symbol': symbol, 'startTime':
-                start_ts, 'endTime': end_ts, 'limit': 9999999999999999999}))
-        cache_symbols_parsed.insert_in_db_clear()
-        LOG.info(f"{parse_minutes} minutes of aggtrades inserted from {datetime.fromtimestamp(start_ts / 1000)} to "
-                 f"{datetime.fromtimestamp(end_ts / 1000)}.")
+        if len(trades) < 1000:
+            return trades
+        else:
+            partial_interval = int((end_ts - start_ts) / 10)
+            if partial_interval < 10:
+                return trades  # Doesn't guarantee that all trades are parsed, but its good enough.
+            else:
+                divided_trades = []
+                for tf in [*range(start_ts, end_ts, partial_interval)]:
+                    divided_trades.append(get_next_parse_minutes_trades(symbol, tf, tf + partial_interval))
+                return [l for l in itertools.chain.from_iterable(divided_trades)]
 
-        start_ts = end_ts + ONE_SECONDS_IN_MS
+    symbols_to_parse = usdt_with_bnb_symbols()
+    cache_symbols_parsed = CacheAggtrades(start_ts, end_ts)
 
-    LOG.info("Insertions from past aggtrades ended.")
+    for symbol in symbols_to_parse:
+        cache_symbols_parsed.append(symbol, get_next_parse_minutes_trades(symbol, start_ts, end_ts))
+    cache_symbols_parsed.insert_in_db_clear()
+    LOG.info(f"{(end_ts - start_ts) / 1000 / 60} minutes of aggtrades inserted from {datetime.fromtimestamp(start_ts / 1000)} to "
+             f"{datetime.fromtimestamp(end_ts / 1000)}, exiting.")
+    exit(0)
 
 # import contextlib
 # from binance import AsyncClient, BinanceSocketManager
