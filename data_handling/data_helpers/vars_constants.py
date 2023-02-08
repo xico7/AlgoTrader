@@ -13,12 +13,13 @@ PARSED_AGGTRADES_DB = "parsed_aggtrades"
 VALIDATOR_DB = "Timestamps_Validator"
 START_TS_VALIDATOR_DB_SUFFIX = "_start_timestamp_validator"
 FINISH_TS_VALIDATOR_DB_SUFFIX = "_finish_timestamp_validator"
+DONE_INTERVAL_VALIDATOR_DB_SUFFIX = "_done_interval_timestamp_validator"
 VALID_END_TS_VALIDATOR_DB_SUFFIX = "_valid_end_timestamp_validator"
 END_TS_AGGTRADES_VALIDATOR_DB = "end_timestamp_aggtrades_validator_db"
 START_TS_AGGTRADES_VALIDATOR_DB = "start_timestamp_aggtrades_validator_db"
+BASE_TRADES_CHART_DB = 'trades_chart_{}_minutes'
 
 
-TRADE_DATA_PYTHON_CACHE_SIZE = 30
 TRADE_DATA_CACHE_TIME_IN_MS = 60 * 60 * 1000
 
 

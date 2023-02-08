@@ -6,7 +6,6 @@ import pkgutil
 import logging
 import logs
 import tasks
-
 from MongoDB.db_actions import DB
 from data_handling.data_helpers.vars_constants import TEN_SECS_PARSED_TRADES_DB, UNUSED_CHART_TRADE_SYMBOLS
 
@@ -41,6 +40,9 @@ def get_argparse_execute_functions():
                                                            help="Run trade data with given start/end timestamp (timestamp in ms) so it "
                                                                 "can be ran by multiple threads to speed up execution.")
 
+    #TODO: make this 'timeframe-in-minutes' dynamic.
+    subparser.choices['simple-moving-average'].add_argument(f"--timeframe-in-minutes", type=int, required=True,
+                                                            help="Simple moving average timeframe, in minutes.")
     subparser.choices['relative-volume'].add_argument(f"--timeframe-in-minutes", type=int, required=True,
                                                       help="Relative volume timeframe, in minutes.")
 
