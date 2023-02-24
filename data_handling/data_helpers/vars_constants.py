@@ -1,3 +1,5 @@
+from enum import Enum
+
 ## Config variables, variables that can change how the program behaves are inserted here.
 
 AGGTRADE_PYCACHE = 1000
@@ -19,8 +21,7 @@ END_TS_AGGTRADES_VALIDATOR_DB = "end_timestamp_aggtrades_validator_db"
 START_TS_AGGTRADES_VALIDATOR_DB = "start_timestamp_aggtrades_validator_db"
 BASE_TRADES_CHART_DB = 'trades_chart_{}_minutes'
 
-
-TRADE_DATA_CACHE_TIME_IN_MS = 60 * 60 * 1000
+TRADE_DATA_CACHE_TIME_IN_MS = ONE_DAY_IN_MS
 
 
 DEEMED_UNTRADEABLE_SYMBOLS = ['USDTIDRT', 'USDTTRY', 'BUSDUSDT', 'USDTRUB', 'USDTBRL', 'USTUSDT',
@@ -39,7 +40,6 @@ TIMEFRAME_DOC_KEY_INDEX = 'timeframe_index_placeholder_name'
 
 coingecko_marketcap_api_link = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=150&page=1&sparkline=false"
 SYMBOL = 'symbol'
-DEFAULT_SYMBOL_SEARCH = "BTCUSDT"
 MARKETCAP = 'marketcap'
 TS = "timestamp"
 FINISH_TS = "finish_timestamp"
@@ -49,13 +49,14 @@ PRICE = "price"
 QUANTITY = 'quantity'
 
 
-class MongoDB:
+class DBQueryOperators(Enum):
     EQUAL = '$eq'
     LOWER_EQ = '$lte'
     LOWER = '$lt'
     HIGHER_EQ = '$gte'
     HIGHER = '$gt'
     AND = '$and'
+    IN = '$in'
 
 
 #

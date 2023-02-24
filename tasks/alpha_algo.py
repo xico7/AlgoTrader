@@ -1,25 +1,20 @@
-import itertools
 import types
 from collections import namedtuple
 from enum import Enum
 
-import bson
-from pymongoarrow.api import Schema
+
 import matplotlib.pyplot as plt
 from pymongoarrow.monkey import patch_all
-import pandas
 from matplotlib.axes._subplots import SubplotBase
-#from data_handling.data_func import TradesTAIndicators
 from data_handling.data_helpers.data_staging import mins_to_ms
-from data_handling.data_helpers.vars_constants import DEFAULT_COL_SEARCH, ONE_DAY_IN_MS, ONE_HOUR_IN_MS, \
-    TEN_SECS_PARSED_TRADES_DB, TS, TEN_SECONDS_IN_MS, ONE_DAY_IN_MINUTES, TWO_HOURS_IN_MINUTES
+from data_handling.data_helpers.vars_constants import DEFAULT_COL_SEARCH, ONE_DAY_IN_MS, ONE_DAY_IN_MINUTES, TWO_HOURS_IN_MINUTES
 
 patch_all()
 
-from MongoDB.db_actions import DB, DBCol, trades_chart, ValidatorDB
+from MongoDB.db_actions import DB, DBCol, BASE_TRADES_CHART_DB, ValidatorDB
 
 
-class AlphaAlgoRulesVars(Enum):
+class AlphaAlgoRules(Enum):
     one_day_minimum_range_percentage = 6
     two_hours_minimum_range_percentage = 1.5
 
@@ -52,21 +47,25 @@ def execute_alpha_algo():
         MapChartDBToMS = namedtuple("MapChartDBToMS", ["db_name", "db_timeframe_in_milliseconds"])
 
         def get_chart_db_ms(timeframe_in_minutes: int):
-            return MapChartDBToMS(trades_chart.format(timeframe_in_minutes), mins_to_ms(timeframe_in_minutes))
+            return MapChartDBToMS(BASE_TRADES_CHART_DB.format(timeframe_in_minutes), mins_to_ms(timeframe_in_minutes))
 
         chart_tf_one_day = get_chart_db_ms(ONE_DAY_IN_MINUTES)
-        chart_tf_2h = get_chart_db_ms(TWO_HOURS_IN_MINUTES)
         init_ts = DBCol(chart_tf_one_day.db_name, symbol).oldest_timeframe()
         end_ts = init_ts + mins_to_ms(1440*2)
         a = DBCol(chart_tf_one_day.db_name, DEFAULT_COL_SEARCH).most_recent_timeframe()
 
-        for mapped_trade in zip(DBCol(chart_tf_one_day.db_name, symbol).column_between(init_ts, end_ts, 'start_ts'),
-                         DBCol(chart_tf_2h.db_name, symbol).column_between(
-                             init_ts + chart_tf_one_day.db_timeframe_in_milliseconds - chart_tf_2h.db_timeframe_in_milliseconds,
-                             end_ts + chart_tf_one_day.db_timeframe_in_milliseconds - chart_tf_2h.db_timeframe_in_milliseconds, 'start_ts')):
-            if mapped_trade[0]['price_range_percentage'] > AlphaAlgoRulesVars.one_day_minimum_range_percentage \
-                    and mapped_trade[0]['price_range_percentage'] > AlphaAlgoRulesVars.two_hours_minimum_range_percentage:
-                potential_valid_fund_data.append(mapped_trade[0]['end_ts'])
+        def query_chart_trades(chart_db_timeframe):
+            chart_db_tf = get_chart_db_ms(chart_db_timeframe)
+
+            return DBCol(chart_db_tf.db_name, symbol).column_between(
+                init_ts + chart_tf_one_day.db_timeframe_in_milliseconds - chart_db_tf.db_timeframe_in_milliseconds,
+                end_ts + chart_tf_one_day.db_timeframe_in_milliseconds - chart_db_tf.db_timeframe_in_milliseconds)
+
+        for one_day_trade, two_hour_trade in zip(DBCol(chart_tf_one_day.db_name, symbol).column_between(init_ts, end_ts),
+                                                 query_chart_trades(TWO_HOURS_IN_MINUTES)):
+            if one_day_trade['price_range_percentage'] > AlphaAlgoRules.one_day_minimum_range_percentage.value \
+                    and two_hour_trade['price_range_percentage'] > AlphaAlgoRules.two_hours_minimum_range_percentage.value:
+                potential_valid_fund_data.append(one_day_trade['end_ts'])
         a = DBCol(chart_tf_one_day, symbol).column_between(init_ts, end_ts, 'start_ts')
 
         while init_ts + append_ts <= end_ts:
@@ -122,7 +121,7 @@ def execute_alpha_algo():
     figure, axis = plt.subplots(2, 2)
 
     def standard_plot(timeframe_in_mins, plot: [SubplotBase, types.ModuleType], symbol):
-        chart_tf_db = trades_chart.format(timeframe_in_mins)
+        chart_tf_db = BASE_TRADES_CHART_DB.format(timeframe_in_mins)
         start_ts = ValidatorDB(chart_tf_db).start_ts
         symbol_chart = DBCol(chart_tf_db, symbol).column_between(start_ts, start_ts, 'start_ts')[0]
 
@@ -153,7 +152,7 @@ def execute_alpha_algo():
     plt.show()
 
     def range_percentages(timeframe_in_mins):
-        chart_tf_db = trades_chart.format(timeframe_in_mins)
+        chart_tf_db = BASE_TRADES_CHART_DB.format(timeframe_in_mins)
 
         start_ts = ValidatorDB(chart_tf_db).start_ts
         dif_price_range = 0
@@ -174,7 +173,7 @@ def execute_alpha_algo():
     # plt.show()
 
     def plot_volumes(timeframe_in_mins):
-        chart_tf_db = trades_chart.format(timeframe_in_mins)
+        chart_tf_db = BASE_TRADES_CHART_DB.format(timeframe_in_mins)
 
         start_ts = ValidatorDB(chart_tf_db).start_ts
         for symbol in DB(chart_tf_db).list_collection_names():

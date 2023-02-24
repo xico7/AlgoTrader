@@ -1,11 +1,14 @@
 import logging
+import time
+from abc import abstractmethod, ABC
 from dataclasses import field, dataclass
 from datetime import datetime
 from typing import Optional
 
 import logs
-from MongoDB.db_actions import BASE_TRADES_CHART_DB, DB, TradesChartValidatorDB, ValidatorDB
+from MongoDB.db_actions import BASE_TRADES_CHART_DB, DB, TradesChartValidatorDB, ValidatorDB, DBCol
 from data_handling.data_helpers.vars_constants import TS
+from support.decorators_extenders import init_only_existing
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -14,8 +17,9 @@ class UninitializedTradesChart(Exception): pass
 class NoTradesToParse(Exception): pass
 
 
+@init_only_existing
 @dataclass
-class TradesChartTechnicalIndicator:
+class TradesChartTechnicalIndicator(ABC):
     metric_granularity: int
     timeframe_in_minutes: int
     metric_name: str
@@ -45,12 +49,17 @@ class TradesChartTechnicalIndicator:
 
         self.trades_chart_db_conn = DB(BASE_TRADES_CHART_DB.format(self.timeframe_in_minutes))
 
-    def parse_metric(self, metric_data, metric_args):
-        parse_at_a_time_rate = 100
+    @abstractmethod
+    def metric_logic(self, *args, **kwargs):
+        raise NotImplemented()
+
+    def parse_metric(self):
+        parse_at_a_time_rate = 30
 
         range_total = [*range(self.start_ts, self.end_ts + 1, self.metric_granularity)]
         range_counter = 0
-        while range_counter + parse_at_a_time_rate <= len(range_total):
+
+        while True:
             partial_range = range_total[range_counter: range_counter + parse_at_a_time_rate]
             start_ts, end_ts = partial_range[0], partial_range[-1]
 
@@ -64,18 +73,14 @@ class TradesChartTechnicalIndicator:
 
             for symbol in self.trades_chart_db_conn.list_collection_names():
                 symbol_metric_values = []
+                symbol_db_conn = DBCol(self.trades_chart_db_conn, symbol)
                 for tf in partial_range:
-                    symbol_metric_values.append({TS: tf, self.metric_name: metric_data(getattr(self.trades_chart_db_conn, symbol), *[metric_args, tf])})
+                    symbol_metric_values.append({TS: tf, self.metric_name: self.metric_logic(symbol_db_conn, tf)})
                 getattr(self.metric_db_conn, symbol).insert_many(symbol_metric_values)
-
-            self._metric_validator_db_conn.set_finish_ts(end_ts)
+            self._metric_validator_db_conn.set_finish_ts(end_ts + self.metric_granularity)
 
             LOG.info(f"Parsed metric {self.metric_name} for timeframe {self.timeframe_in_minutes} with start date of "
                      f"{datetime.fromtimestamp(start_ts / 1000)} and end date of {datetime.fromtimestamp(end_ts / 1000)}")
 
             range_counter += parse_at_a_time_rate
-
-        LOG.info(f"Finished parsing relative volume for timeframe {self.timeframe_in_minutes}.")
-        exit(0)
-
 

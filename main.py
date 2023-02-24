@@ -170,14 +170,14 @@ def main():
         # threads = {}
         # # threads['parse-trades-ten-seconds'] = threading.Thread(target=run_algotrader_process, args=('parse-trades-ten-seconds',))
         # threads['relative-volume-60'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '60']))
-        # threads['relative-volume-120'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '120']))
-        # threads['relative-volume-240'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '240']))
-        # threads['relative-volume-480'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '480']))
+        # # threads['relative-volume-120'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '120']))
+        # # threads['relative-volume-240'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '240']))
+        # # threads['relative-volume-480'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '480']))
         # threads['relative-volume-1440'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '1440']))
-        # threads['relative-volume-2880'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '2880']))
-        # threads['relative-volume-5760'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '5760']))
-        # threads['relative-volume-11520'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '11520']))
-
+        # # threads['relative-volume-2880'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '2880']))
+        # # threads['relative-volume-5760'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '5760']))
+        # # threads['relative-volume-11520'] = threading.Thread(target=run_algotrader_process, args=('relative-volume', ['--timeframe-in-minutes', '11520']))
+        #
         # for thread in threads.values():
         #     thread.start()
         #     time.sleep(20)
@@ -191,7 +191,7 @@ def main():
             elif not (begin_ts := (ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts + mins_to_ms(timeframe))):
                 LOG.error(f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry.")
                 raise InvalidStartTimestamp(f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry.")
-            parse_time = int(ONE_DAY_IN_MS / 48)
+            parse_time = int(ONE_DAY_IN_MS / 2)
 
             timeframes = []
             for _ in range(number_of_threads):
@@ -200,25 +200,24 @@ def main():
 
             trade_chart_db_conn.drop_collection(trade_chart_db_conn.done_intervals_ts_collection)
             for start_end_tf in timeframes:
-                threads.append(threading.Thread(target=run_algotrader_process,
-                                                args=('transform-trade-data',
-                                                      ['--chart-minutes', f'{timeframe}', '--multithread-start-end-timeframe',
-                                                       f'{start_end_tf[0]}', f'{start_end_tf[1]}'])))
+                threads.append(threading.Thread(target=run_algotrader_process, args=(
+                    'transform-trade-data', ['--chart-minutes', f'{timeframe}', '--multithread-start-end-timeframe',
+                                             f'{start_end_tf[0]}', f'{start_end_tf[1]}'])))
 
             for thread in threads:
-                time.sleep(5)
+                time.sleep(30)
                 thread.start()
 
             return threads
 
-        one_hour_thread_count = 10
-        two_hour_thread_count = 4
-        four_hour_thread_count = 4
+        one_hour_thread_count = 4
+        two_hour_thread_count = 2
+        four_hour_thread_count = 3
         eight_hour_thread_count = 4
-        one_day_thread_count = 4
+        one_day_thread_count = 3
         two_days_thread_count = 4
-        four_days_thread_count = 4
-        eight_days_thread_count = 2
+        four_days_thread_count = 6
+        eight_days_thread_count = 4
 
         one_hour_threads = create_run_timeframe_chart_threads(60, one_hour_thread_count)
         time.sleep(30)
@@ -263,7 +262,6 @@ def main():
                 eight_day_threads = create_run_timeframe_chart_threads(11520, eight_days_thread_count)
 
             time.sleep(20)
-
 
 
 main()

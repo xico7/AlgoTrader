@@ -6,8 +6,6 @@ import pkgutil
 import logging
 import logs
 import tasks
-from MongoDB.db_actions import DB
-from data_handling.data_helpers.vars_constants import TEN_SECS_PARSED_TRADES_DB, UNUSED_CHART_TRADE_SYMBOLS
 
 logs.setup_logs(verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, logging.VERBOSE][:4 + 1][-1])
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
@@ -34,13 +32,10 @@ def get_argparse_execute_functions():
 
     subparser.choices['save-aggtrades'].add_argument(f"--start-ts", type=int, required=True, help="start timestamp to get binance API aggtrades.")
     subparser.choices['save-aggtrades'].add_argument(f"--end-ts", type=int, required=True, help="end timestamp to get binance API aggtrades.")
-
     subparser.choices['transform-trade-data'].add_argument(f"--chart-minutes", type=int, required=False, help="Volume percentile data chart timeframe.")
     subparser.choices['transform-trade-data'].add_argument(f"--multithread-start-end-timeframe", type=int, nargs=2, required=True,
                                                            help="Run trade data with given start/end timestamp (timestamp in ms) so it "
                                                                 "can be ran by multiple threads to speed up execution.")
-
-    #TODO: make this 'timeframe-in-minutes' dynamic.
     subparser.choices['simple-moving-average'].add_argument(f"--timeframe-in-minutes", type=int, required=True,
                                                             help="Simple moving average timeframe, in minutes.")
     subparser.choices['relative-volume'].add_argument(f"--timeframe-in-minutes", type=int, required=True,
