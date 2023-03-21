@@ -14,8 +14,7 @@ from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, TS, DEFAU
     END_TS_AGGTRADES_VALIDATOR_DB, DEFAULT_PARSE_INTERVAL_IN_MS, TEN_SECONDS_IN_MS, FUND_DATA_COLLECTION, \
     START_TS_AGGTRADES_VALIDATOR_DB, TRADE_DATA_CACHE_TIME_IN_MS, DEFAULT_COL_SEARCH
 from dataclasses import dataclass, asdict, field
-from MongoDB.db_actions import DB, DBCol, ValidatorDB, TradesChartValidatorDB, BASE_TRADES_CHART_DB, DBData, \
-    OneOrTenSecsMSMultiple
+from MongoDB.db_actions import DB, DBCol, ValidatorDB, TradesChartValidatorDB, BASE_TRADES_CHART_DB, OneOrTenSecsMSMultiple
 from data_handling.data_helpers.data_staging import round_last_ten_secs
 
 
@@ -345,7 +344,6 @@ class Trade:
                     self.end_price[symbol] = t
                     if not self.start_price[symbol]:
                         self.start_price[symbol] = t
-
                 try:
                     tf_trades = self.ts_data[symbol][round_last_ten_secs(trade.timestamp)]
                     tf_trades.price += (trade.price - tf_trades.price) * trade.quantity / (tf_trades.quantity + trade.quantity)
@@ -354,29 +352,24 @@ class Trade:
                     tf_trades.price = trade.price
 
                 tf_trades.quantity += trade.quantity
-
         return self
 
 
 class SymbolsTimeframeTrade(Trade):
-    def __init__(self, start_ts: Dict[str, int] = None):
+    def __init__(self, start_ts: int = None):
         if not (symbols := [elem for elem in DB(TEN_SECS_PARSED_TRADES_DB).list_collection_names() if elem != 'fund_data']):
             symbols = set(DB(PARSED_AGGTRADES_DB).list_collection_names()) - set(UNUSED_CHART_TRADE_SYMBOLS)
         super().__init__(symbols)
 
-        if not ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts:  # Init DB.
-            self.start_ts = {symbol: ValidatorDB(PARSED_AGGTRADES_DB).start_ts for symbol in DB(PARSED_AGGTRADES_DB).list_collection_names()}
-        elif start_ts:
+        if start_ts:
             self.start_ts = start_ts
+        elif not ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts:  # Init DB.
+            self.start_ts = ValidatorDB(PARSED_AGGTRADES_DB).start_ts
         else:
-            self.start_ts = {}
-            for symbol in symbols:
-                start_ts = DBCol(self.db_name, symbol).most_recent_timeframe()
-                self.start_ts[symbol] = start_ts + TEN_SECONDS_IN_MS if start_ts else ValidatorDB(PARSED_AGGTRADES_DB).start_ts
+            self.start_ts = DBCol(self.db_name, DEFAULT_COL_SEARCH).most_recent_timeframe()
+        self.end_ts = self.start_ts + self.timeframe
 
-        self.end_ts = {symbol: self.start_ts[symbol] + self.timeframe for symbol in symbols}
-
-        if max(self.end_ts[symbol] for symbol in symbols) > self._finish_run_ts:
+        if self.end_ts > self._finish_run_ts:
             self.finished = True
         else:
             self.add_trades(self.symbols, self.start_ts, self.end_ts)
@@ -391,13 +384,11 @@ class SymbolsTimeframeTrade(Trade):
                 db_symbol_conn.clear_between(self.start_ts, self.end_ts)
                 db_symbol_conn.insert_many(trades)
 
-        validator_db = ValidatorDB(TEN_SECS_PARSED_TRADES_DB)
-        if not validator_db.start_ts:
-            validator_db.set_start_ts(min([self.start_ts[symbol] for symbol in self.symbols]))
-        validator_db.set_finish_ts(max([self.end_ts[symbol] for symbol in self.symbols]))
+        if not (validator_db := ValidatorDB(TEN_SECS_PARSED_TRADES_DB)).start_ts:
+            validator_db.set_start_ts(self.start_ts)
+        validator_db.set_finish_ts(self.end_ts)
 
-        LOG.info(f"Parsed 1 hour symbol pairs with a maximum start time of "
-                 f"{datetime.fromtimestamp(max(self.start_ts[symbol] for symbol in self.symbols) / 1000)}.")
+        LOG.info(f"Parsed 1 hour symbol pairs with a start time of {datetime.fromtimestamp(self.start_ts / 1000)}.")
 
 
 class FundTimeframeTrade(Trade):

@@ -10,10 +10,9 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 def parse_trades_ten_seconds():
     coin_ratio = coin_ratio_marketcap()
-
     parse_fund_data = None
     parse_aggtrade = None
-    aggtrades_stop_and_save_timeframes = []
+    aggtrades_stop_and_save_timeframes = 0
     fund_stop_and_save_timeframe = 0
 
     LOG.info("Beginning to parse ten seconds trades.")
@@ -30,16 +29,16 @@ def parse_trades_ten_seconds():
         elif aggtrades_stop_and_save_timeframes:
             parse_aggtrade = SymbolsTimeframeTrade(aggtrades_stop_and_save_timeframes)
         else:
-            parse_aggtrade = SymbolsTimeframeTrade(
-                {symbol: parse_aggtrade.end_ts[symbol] + TEN_SECONDS_IN_MS for symbol in parse_aggtrade.symbols})
+            parse_aggtrade = SymbolsTimeframeTrade(parse_aggtrade.end_ts + TEN_SECONDS_IN_MS)
 
         if parse_fund_data.finished and parse_aggtrade.finished:
-            if not aggtrades_stop_and_save_timeframes:
-                aggtrades_stop_and_save_timeframes = {symbol: parse_aggtrade.start_ts[symbol] + TEN_SECONDS_IN_MS for symbol in parse_aggtrade.symbols}
-            if not fund_stop_and_save_timeframe:
-                fund_stop_and_save_timeframe = parse_fund_data.start_ts + TEN_SECONDS_IN_MS
             LOG.info("Finished parsing ten seconds trades, sleeping for ten minutes.")
             time.sleep(600)
+
+            if not aggtrades_stop_and_save_timeframes:
+                aggtrades_stop_and_save_timeframes = parse_aggtrade.start_ts + TEN_SECONDS_IN_MS
+            if not fund_stop_and_save_timeframe:
+                fund_stop_and_save_timeframe = parse_fund_data.start_ts + TEN_SECONDS_IN_MS
             parse_fund_data.finished = False
             parse_aggtrade.finished = False
         else:
@@ -48,5 +47,5 @@ def parse_trades_ten_seconds():
                 fund_stop_and_save_timeframe = 0
             if not parse_aggtrade.finished:
                 parse_aggtrade.parse_and_insert_trades()
-                aggtrades_stop_and_save_timeframes = []
+                aggtrades_stop_and_save_timeframes = 0
 

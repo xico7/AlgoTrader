@@ -271,7 +271,7 @@ class ValidatorDB(DB, ABC):
         self.finish_ts = finish_ts_data[FINISH_TS] if finish_ts_data else None
         self.start_ts = start_ts_data[START_TS] if start_ts_data else None
 
-    def set_valid_timestamps(self, timestamps_gap=0):
+    def set_valid_timestamps(self):
         if not (done_intervals := self.done_intervals_ts_collection.find_all()):
             return False
 
@@ -283,14 +283,16 @@ class ValidatorDB(DB, ABC):
 
         start_ts, end_ts = min(time_intervals_start_ts), max(time_intervals_end_ts)
 
-        for interval in time_intervals_end_ts:
-            if int(interval + timestamps_gap) not in time_intervals_start_ts and interval != end_ts \
-                    and int(interval + DB(self.validate_db_name).atomicity) not in time_intervals_start_ts:
+        for end_ts_interval in time_intervals_end_ts:
+            is_not_new_end_ts = end_ts_interval != end_ts
+            end_ts_does_not_follow_start_ts = int(
+                end_ts_interval + DB(self.validate_db_name).atomicity) not in time_intervals_start_ts
+            if end_ts_does_not_follow_start_ts and is_not_new_end_ts:
                 LOG.error("Missing time interval detected, can't set a valid 'finish_ts'.")
                 raise MissingTimeInterval("Missing time interval detected, can't set a valid 'finish_ts'.")
 
         if not self.start_ts:
-            self.set_start_ts(end_ts)  # doesn't actually put the right start_ts, and instead inserts the end_ts
+            self.set_start_ts(end_ts)  # doesn't actually put the right start_ts, but inserts the end_ts instead.
 
         if self.finish_ts and (start_ts != self.finish_ts and start_ts != self.finish_ts + TEN_SECONDS_IN_MS):
             # For some reason sometimes there is a Ten secs gap between start_ts.
@@ -331,16 +333,13 @@ def list_dbs():
 
 
 def delete_dbs_all():
-    undeleteable = ['admin', 'config', 'local']
-    for db_name in list_dbs():
-        if db_name not in undeleteable:
-            mongo_client.drop_database(db_name)
+    for db_name in [deleteable for deleteable in list_dbs() if deleteable not in ['admin', 'config', 'local']]:
+        mongo_client.drop_database(db_name)
 
 
 def delete_dbs_with_text(text) -> None:
-    for db in list_dbs():
-        if text in db:
-            mongo_client.drop_database(db)
+    for db in [dbs for dbs in list_dbs() if text in dbs]:
+        mongo_client.drop_database(db)
 
 
 def change_charts_values(timeframe_in_minutes):

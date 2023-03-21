@@ -25,6 +25,7 @@ class RelativeVolume(TradesChartTechnicalIndicator):
 
         return db_col_conn.find_timeseries(timestamp)['total_volume'] / ((past_relative_volume(5) + past_relative_volume(15) + past_relative_volume(30)) / 3)
 
+
 def relative_volume(args):
     rel_vol_ta = RelativeVolume(
         mins_to_ms(1), args['timeframe_in_minutes'], args['command'].replace('-', '_'),
