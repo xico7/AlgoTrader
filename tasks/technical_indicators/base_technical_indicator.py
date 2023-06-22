@@ -52,14 +52,16 @@ class TradesChartTechnicalIndicator(ABC):
     def metric_logic(self, *args, **kwargs):
         raise NotImplemented()
 
-    def parse_metric(self):
+    def parse_metric(self, timeframe_based: bool):
         parse_at_a_time_rate = 30
 
         range_total = [*range(self.start_ts, self.end_ts + 1, self.metric_granularity)]
         range_counter = 0
 
         while True:
-            partial_range = range_total[range_counter: range_counter + parse_at_a_time_rate]
+            if not (partial_range := range_total[range_counter: range_counter + parse_at_a_time_rate]):
+                LOG.info("No more trades to parse, exiting.")
+                exit(0)
             start_ts, end_ts = partial_range[0], partial_range[-1]
 
             if not self._metric_validator_db_conn.start_ts:
@@ -70,12 +72,21 @@ class TradesChartTechnicalIndicator(ABC):
             LOG.info(f"Starting to parse metric {self.metric_name} for timeframe {self.timeframe_in_minutes} with start date of "
                      f"{datetime.fromtimestamp(start_ts / 1000)} and end date of {datetime.fromtimestamp(end_ts / 1000)}")
 
-            for symbol in self.trades_chart_db_conn.list_collection_names():
-                symbol_metric_values = []
-                symbol_db_conn = DBCol(self.trades_chart_db_conn, symbol)
+            if timeframe_based:
                 for tf in partial_range:
-                    symbol_metric_values.append({TS: tf, self.metric_name: self.metric_logic(symbol_db_conn, tf)})
-                getattr(self.metric_db_conn, symbol).insert_many(symbol_metric_values)
+                    symbol_metric_values = {}
+                    for symbol in self.trades_chart_db_conn.list_collection_names():
+                        symbol_db_conn = DBCol(self.trades_chart_db_conn, symbol)
+                        symbol_metric_values[symbol] = self.metric_logic(symbol_db_conn, tf)
+                    getattr(self.metric_db_conn, self.metric_name).insert_one({TS: tf, self.metric_name: symbol_metric_values})
+            else:  # Symbol based
+                for symbol in self.trades_chart_db_conn.list_collection_names():
+                    symbol_metric_values = []
+                    symbol_db_conn = DBCol(self.trades_chart_db_conn, symbol)
+                    for tf in partial_range:
+                        symbol_metric_values.append({TS: tf, self.metric_name: self.metric_logic(symbol_db_conn, tf)})
+                    getattr(self.metric_db_conn, symbol).insert_many(symbol_metric_values)
+
             self._metric_validator_db_conn.set_finish_ts(end_ts + self.metric_granularity)
 
             LOG.info(f"Parsed metric {self.metric_name} for timeframe {self.timeframe_in_minutes} with start date of "

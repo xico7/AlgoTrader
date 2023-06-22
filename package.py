@@ -7,9 +7,7 @@ from pathlib import Path
 
 printe = partial(print, file=sys.stderr)
 
-name = 'AlgoTrader'
-
-libs_posix = 'libs_posix'
+name = 'Algotrader'
 
 if os.name == 'nt':
     raise NotImplementedError("Windows package is not implemented.")

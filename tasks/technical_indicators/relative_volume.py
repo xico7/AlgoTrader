@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 import logs
 from MongoDB.db_actions import TradesChartValidatorDB
-from data_handling.data_helpers.data_staging import mins_to_ms
+from support.generic_helpers import mins_to_ms
 from tasks.technical_indicators.base_technical_indicator import TradesChartTechnicalIndicator
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
@@ -28,6 +28,9 @@ class RelativeVolume(TradesChartTechnicalIndicator):
 
 def relative_volume(args):
     rel_vol_ta = RelativeVolume(
-        mins_to_ms(1), args['timeframe_in_minutes'], args['command'].replace('-', '_'),
+        mins_to_ms(1),
+        args['timeframe_in_minutes'],
+        args['command'].replace('-', '_'),
         TradesChartValidatorDB(args['timeframe_in_minutes']).start_ts + mins_to_ms(args['timeframe_in_minutes'] * 30))
-    rel_vol_ta.parse_metric()
+
+    rel_vol_ta.parse_metric(timeframe_based=False)

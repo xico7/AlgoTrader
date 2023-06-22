@@ -19,15 +19,17 @@ DONE_INTERVAL_VALIDATOR_DB_SUFFIX = "_done_interval_timestamp_validator"
 VALID_END_TS_VALIDATOR_DB_SUFFIX = "_valid_end_timestamp_validator"
 END_TS_AGGTRADES_VALIDATOR_DB = "end_timestamp_aggtrades_validator_db"
 START_TS_AGGTRADES_VALIDATOR_DB = "start_timestamp_aggtrades_validator_db"
-BASE_TRADES_CHART_DB = 'trades_chart_{}_minutes'
+TRADES_CHART_DB_CONTAINING_NAME = 'trades_chart'
+REL_VOLUME_DB_CONTAINING_NAME = 'relative_volume'
+BASE_TRADES_CHART_DB = TRADES_CHART_DB_CONTAINING_NAME + '_{}_minutes'
 
 TRADE_DATA_CACHE_TIME_IN_MS = ONE_DAY_IN_MS
 
 
 DEEMED_UNTRADEABLE_SYMBOLS = ['USDTIDRT', 'USDTTRY', 'BUSDUSDT', 'USDTRUB', 'USDTBRL', 'USTUSDT',
-                              'BNBUSDT', 'TUSDUSDT']  # Symbols that i don't consider tradeable for various reasons.
+                              'BNBUSDT', 'TUSDUSDT', 'EURUSDT']  # Symbols that i don't consider tradeable for various reasons.
 NO_LONGER_TRADED_BINANCE_SYMBOLS = ['USDTNGN', 'USDPUSDT', 'WNXMUSDT', 'LOKAUSDT', 'POWRUSDT', 'API3USDT', 'LOKAUSDT',
-                              'IMXUSDT', 'ANCUSDT', 'WOOUSDT', 'BURGERUSDT']  # Some symbols stop being traded in Binance.
+                              'IMXUSDT', 'ANCUSDT', 'WOOUSDT', 'BURGERUSDT', 'WANUSDT', 'USDTBIDR', 'ICPUSDT']  # Some symbols stop being traded in Binance.
 
 UNUSED_CHART_TRADE_SYMBOLS = NO_LONGER_TRADED_BINANCE_SYMBOLS + DEEMED_UNTRADEABLE_SYMBOLS
 FUND_SYMBOLS_USDT_PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'ADAUSDT', 'XRPUSDT', 'DOTUSDT', 'DOGEUSDT',
@@ -66,6 +68,7 @@ class DBQueryOperators(Enum):
 
 TWO_HOURS_IN_MINUTES = 120
 ONE_DAY_IN_MINUTES = 1440
+ONE_DAY_IN_MS = ONE_DAY_IN_MINUTES * 60 * 1000
 
 
 SECONDS_TO_MS_APPEND = '000'

@@ -1,0 +1,30 @@
+2023-04-02 11:45:08,895 [INFO ] ? -> ?() Querying MongoDB to check if DB is available.
+2023-04-02 11:45:08,903 [INFO ] ? -> ?() Starting Algotrader with default tasks.
+2023-04-02 12:06:21,398 [INFO ] ? -> ?() End_ts ts set to 2021-05-30 21:39:50 for db trades_chart_60_minutes.
+2023-04-02 12:08:25,652 [INFO ] ? -> ?() End_ts ts set to 2021-05-30 05:42:00 for db trades_chart_120_minutes.
+2023-04-02 12:26:34,011 [INFO ] ? -> ?() End_ts ts set to 2021-06-01 15:42:00 for db trades_chart_60_minutes.
+2023-04-02 12:28:58,201 [INFO ] ? -> ?() End_ts ts set to 2021-05-31 05:43:10 for db trades_chart_120_minutes.
+2023-04-02 12:45:06,282 [INFO ] ? -> ?() End_ts ts set to 2021-06-01 21:42:10 for db trades_chart_60_minutes.
+2023-04-02 12:49:10,470 [INFO ] ? -> ?() End_ts ts set to 2021-06-01 05:44:20 for db trades_chart_120_minutes.
+2023-04-02 13:03:38,546 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 03:42:20 for db trades_chart_60_minutes.
+2023-04-02 13:08:46,715 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 02:45:20 for db trades_chart_120_minutes.
+2023-04-02 13:23:34,772 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 06:42:20 for db trades_chart_60_minutes.
+2023-04-02 13:28:26,859 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 08:45:30 for db trades_chart_120_minutes.
+2023-04-02 13:32:05,193 [INFO ] ? -> ?() Querying MongoDB to check if DB is available.
+2023-04-02 13:32:05,201 [INFO ] ? -> ?() Starting Algotrader with default tasks.
+2023-04-02 14:16:37,513 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 12:42:30 for db trades_chart_60_minutes.
+2023-04-02 14:19:45,568 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 11:45:30 for db trades_chart_120_minutes.
+2023-04-02 15:09:21,902 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 14:45:30 for db trades_chart_120_minutes.
+2023-04-02 15:10:29,938 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 15:42:30 for db trades_chart_60_minutes.
+2023-04-02 15:28:42,020 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 17:45:30 for db trades_chart_120_minutes.
+2023-04-02 15:32:30,087 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 21:42:40 for db trades_chart_60_minutes.
+2023-04-02 15:48:06,230 [INFO ] ? -> ?() End_ts ts set to 2021-06-02 20:45:30 for db trades_chart_120_minutes.
+2023-04-02 16:04:54,289 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 00:42:40 for db trades_chart_60_minutes.
+2023-04-02 16:08:02,378 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 02:45:40 for db trades_chart_120_minutes.
+2023-04-02 16:47:58,641 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 06:42:50 for db trades_chart_60_minutes.
+2023-04-02 16:51:06,691 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 05:45:40 for db trades_chart_120_minutes.
+2023-04-02 17:41:03,028 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 08:45:40 for db trades_chart_120_minutes.
+2023-04-02 17:42:11,067 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 09:42:50 for db trades_chart_60_minutes.
+2023-04-02 18:00:55,269 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 11:45:40 for db trades_chart_120_minutes.
+2023-04-02 18:23:47,390 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 12:42:50 for db trades_chart_60_minutes.
+2023-04-02 18:25:51,428 [INFO ] ? -> ?() End_ts ts set to 2021-06-03 14:45:40 for db trades_chart_120_minutes.

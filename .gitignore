@@ -25,3 +25,11 @@ data_handling/__pycache__/*
 /AlgoTrader.py
 /AlgoTrader.py.log
 /AlgoTrader.py.verbose.log
+/AlgoTrader_ParseAggtrades.py.log
+/AlgoTrader_ParseAggtrades.py.verbose.log
+/AlgoTrader_ParseAggtrades.py.verbose.ssh.log
+/AlgoTrader_TransformTradeData.py
+/AlgoTrader_TransformTradeData.py.log
+/AlgoTrader_TransformTradeData.py.verbose.log
+/AlgoTrader_TransformTradeData.py.verbose.ssh.log
+/AlgoTrader.py.verbose.ssh.log

@@ -8,14 +8,21 @@ from pymongoarrow.monkey import patch_all
 from matplotlib.axes._subplots import SubplotBase
 from data_handling.data_helpers.data_staging import mins_to_ms
 from data_handling.data_helpers.vars_constants import DEFAULT_COL_SEARCH, ONE_DAY_IN_MS, ONE_DAY_IN_MINUTES, TWO_HOURS_IN_MINUTES
+from libs_posix.attr import dataclass
 
 patch_all()
 
 from MongoDB.db_actions import DB, DBCol, BASE_TRADES_CHART_DB, ValidatorDB
 
 
-class AlphaAlgoRules(Enum):
-    one_day_minimum_range_percentage = 6
+@dataclass
+class MetricRule:
+    metric_name: str
+    metric_minimum_value: float
+
+
+class TradesChartSixtyMinsRules():
+    one_day_minimum_range_percentage = MetricRule("price_range_percentage", 22)
     two_hours_minimum_range_percentage = 1.5
 
 # TODO: Preciso de ver os vários perfis do 'volume rise' principalment eno fund
@@ -27,19 +34,22 @@ TOO_BIG_UNUSED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']
 def execute_alpha_algo():
     def test_alpha():
         pass
-        #  Lowest range percentage considered for coin to be traded, i would say 8% in last 24Hours, 1.5% in last 2 Hours.
-        #  Use only coins in top 50s day volume.
+        #  Use only coins in top 50s day volume.                              Metric DONE
         #  Volume must be at least 50% more than the average of last months daily.
-        #  In fund, the price is irrelevant, just the volume action to determine if its rising or not, /
+        #  This is not so simple because my relative volume is not easy.. it is a weigthed rel vol.. i need to see the values it returns and find a good value to put here.
+
+
+        #  In fund, the price is irrelevant, just the volume action to determine if its rising or not.
         #  in asset to buy the price is relevant because i need to get in cheap.
+
 
     def query_chart_db_data(symbol, chart_tf, init_ts, timeframe_to_query):
         return DBCol(chart_tf, symbol).column_between(init_ts, init_ts + timeframe_to_query, 'start_ts')
 
+
     def is_fund_data_rising():
         #  Lowest range percentage considered for fund data to be relevant, i would say 6% in last 24Hours, 1.5% in last 2 Hours.
-        # Nas últimas 24h o end price vol acima dos 90%, nas últimas 4horas 93%, e nas 1hora 95%.
-        # Volume relativo em releção ao último mês de 1.5
+        # Nas últimas 24h o end price counter acima dos 90%, nas últimas 4horas 93%, e nas 1hora 95%.
 
         potential_valid_fund_data = []
         append_ts = mins_to_ms(2880)
