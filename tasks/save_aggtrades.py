@@ -1,9 +1,7 @@
 import logging
 import itertools
 from datetime import datetime
-
 import requests
-
 import logs
 from data_handling.data_helpers.vars_constants import USDT, BNB
 from data_handling.data_structures import CacheAggtrades

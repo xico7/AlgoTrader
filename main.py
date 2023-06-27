@@ -2,8 +2,8 @@ import asyncio
 import inspect
 import logging
 from pymongo.errors import ServerSelectionTimeoutError
-import logs
 from MongoDB.db_actions import localhost, list_dbs
+import logs
 from argparse_func import get_argparse_execute_functions
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
@@ -17,6 +17,7 @@ async def async_main(func, args):
 # TODO: Fix log debug showing without always and not only with -vv.
 
 def main():
+
     try:
         LOG.info("Querying MongoDB to check if DB is available.")
         list_dbs()

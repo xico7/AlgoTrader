@@ -44,7 +44,6 @@ def create_run_timeframe_chart_threads(timeframe: int, number_of_threads: int = 
 
 
 def trades_chart_runner(args):
-    #TODO: Improve the finish_ts.. it needs to be always the newest value so i can instantiate just one time and not worry about refreshing..
     TradesChartValidatorDB(TradesChartTimeframes.ONE_HOUR.value).set_valid_timestamps()
     TradesChartValidatorDB(TradesChartTimeframes.TWO_HOURS.value).set_valid_timestamps()
     TradesChartValidatorDB(TradesChartTimeframes.FOUR_HOURS.value).set_valid_timestamps()

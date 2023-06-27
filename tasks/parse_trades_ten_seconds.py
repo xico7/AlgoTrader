@@ -1,9 +1,7 @@
 import logging
 import re
 import time
-
 import requests
-
 import logs
 from data_handling.data_structures import SymbolsTimeframeTrade, FundTimeframeTrade
 from data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS, FUND_SYMBOLS_USDT_PAIRS, \

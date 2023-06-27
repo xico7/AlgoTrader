@@ -1,5 +1,4 @@
 from __future__ import annotations
-import contextlib
 import logging
 import time
 from abc import ABCMeta, ABC
@@ -8,21 +7,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Union, Iterator, List
-from typing import TYPE_CHECKING
 import pymongo
-
 from support.generic_helpers import get_current_second_in_ms, mins_to_ms
-
-if TYPE_CHECKING:
-    from data_handling.data_structures import TradeData, TradesChart
-
 from pymongo import MongoClient, database
 import logs
 from data_handling.data_helpers.vars_constants import DBQueryOperators, DEFAULT_COL_SEARCH, \
-    FINISH_TS_VALIDATOR_DB_SUFFIX, \
-    VALIDATOR_DB, FINISH_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECONDS_IN_MS, \
+    FINISH_TS_VALIDATOR_DB_SUFFIX, VALIDATOR_DB, FINISH_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECONDS_IN_MS, \
     ONE_DAY_IN_MINUTES, VALID_END_TS_VALIDATOR_DB_SUFFIX, VALID_END_TS, DONE_INTERVAL_VALIDATOR_DB_SUFFIX, \
-    BASE_TRADES_CHART_DB, DEFAULT_PARSE_INTERVAL_IN_MS, ONE_DAY_IN_MS
+    BASE_TRADES_CHART_DB, DEFAULT_PARSE_INTERVAL_IN_MS
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from data_handling.data_structures import TradeData, TradesChart
 
 localhost = '0.0.0.0:27017/'
 
@@ -33,7 +30,6 @@ mongo_client = MongoClient(host="172.23.224.1", maxPoolSize=0) #TODO: this ip sh
 
 class InvalidOperationForGivenClass(Exception): pass
 class InvalidDocumentKeyProvided(Exception): pass
-class InvalidDBMapperConfiguration(Exception): pass
 class InvalidDataProvided(Exception): pass
 class EmptyDBCol(Exception): pass
 class MissingTimeInterval(Exception): pass
@@ -41,6 +37,7 @@ class InvalidStartTimestamp(Exception): pass
 class InvalidInterval(Exception): pass
 class InvalidResultsNumber(Exception): pass
 class InvalidAtomicityDataType(Exception): pass
+class UnmappedDB(Exception): pass
 
 
 TimeseriesMinMax = namedtuple("TimeseriesMinMax", ["range_lower_bound", "range_higher_bound"])
@@ -56,23 +53,6 @@ class OneOrTenSecsMSMultiple:
             raise InvalidInterval(f"Invalid value provided, must be multiple of {DEFAULT_PARSE_INTERVAL_IN_MS}.")
 
 
-@dataclass
-class Index:
-    document: str
-    unique: bool
-
-
-@dataclass
-class DBData:
-    db_timeframe_index: Index
-    atomicity: OneOrTenSecsMSMultiple = DEFAULT_PARSE_INTERVAL_IN_MS
-
-
-_trades_chart_index = Index('end_ts', True)
-_trades_chart_db_data_default_parse_interval = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS)
-_relative_volume_db_data = DBData(Index('timestamp', True), DEFAULT_PARSE_INTERVAL_IN_MS)
-
-
 class TradesChartTimeframes(Enum):
     ONE_HOUR = 60
     TWO_HOURS = 120
@@ -84,43 +64,85 @@ class TradesChartTimeframes(Enum):
     EIGHT_DAYS = 11520
 
 
+@dataclass
+class Index:
+    document: str
+    unique: bool
+
+
+_trades_chart_index = Index('end_ts', True)
+_timestamp_index = Index('timestamp', True)
+
+
+@dataclass
+class DBData:
+    db_timeframe_index: Optional[Index]
+    atomicity: int
+
+
+@dataclass
+class TechnicalIndicatorDBData(DBData):
+    trade_chart_timeframe: TradesChartTimeframes
+    range_in_seconds: int
+    metric_name: str
+    metric_class: str  # circular import errors, had to use str, matches classes descending from 'Type[TechnicalIndicator]'
+    timeframe_based: bool = False
+
+
+import importlib
 class DBMapper(Enum):
-    ten_seconds_parsed_trades = DBData(Index('timestamp', True))
-    parsed_aggtrades = DBData(Index('timestamp', False), 1)  # one is a valid value, ignore highlight.
-    trades_chart_60_minutes = _trades_chart_db_data_default_parse_interval
-    trades_chart_120_minutes = _trades_chart_db_data_default_parse_interval
-    trades_chart_240_minutes = _trades_chart_db_data_default_parse_interval
-    trades_chart_480_minutes = _trades_chart_db_data_default_parse_interval
+    Timestamps_Validator = None
+    relative_volume_60_minutes = TechnicalIndicatorDBData(
+        _timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS, TradesChartTimeframes.ONE_HOUR, mins_to_ms(10 * 30), 'relative_volume', importlib.import_module("tasks.technical_indicators.technical_indicators"))
+
+
+    total_volume_ta = TechnicalIndicatorDBData(
+        None, mins_to_ms(30), TradesChartTimeframes.ONE_DAY,
+        TradesChartTimeframes.ONE_DAY.value * 60, 'total_volume', 'TotalVolume', True)
+
+    trades_chart_60_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS)
+    trades_chart_120_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS)
+    trades_chart_240_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS)
+    trades_chart_480_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS)
     trades_chart_1440_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS * 2)
     trades_chart_2880_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS * 6)
     trades_chart_5760_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS * 12)
     trades_chart_11520_minutes = DBData(_trades_chart_index, DEFAULT_PARSE_INTERVAL_IN_MS * 48)
-    relative_volume_60_minutes = _relative_volume_db_data
-    relative_volume_120_minutes = _relative_volume_db_data
-    relative_volume_240_minutes = _relative_volume_db_data
-    relative_volume_480_minutes = _relative_volume_db_data
-    relative_volume_1440_minutes = _relative_volume_db_data
-    total_volume_60_minutes = DBData(Index('timestamp', True), DEFAULT_PARSE_INTERVAL_IN_MS * 360)
-    total_volume_1440_minutes = DBData(Index('timestamp', True))
+    parsed_aggtrades = DBData(Index('timestamp', False), 1)  # one is a valid value, ignore highlight.
+    ten_seconds_parsed_trades = DBData(Index('timestamp', True), DEFAULT_PARSE_INTERVAL_IN_MS)
+
+    # relative_volume_60_minutes = TechnicalIndicatorDBData(_timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS, 60)
+    # relative_volume_120_minutes = TechnicalIndicatorDBData(_timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS, 60)
+    # relative_volume_240_minutes = TechnicalIndicatorDBData(_timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS, 60)
+    # relative_volume_480_minutes = TechnicalIndicatorDBData(_timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS, 60)
+    # relative_volume_1440_minutes = TechnicalIndicatorDBData(_timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS, 60)
+    # total_volume_60_minutes = DBData(_timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS * 360)
+    # total_volume_1440_minutes = DBData(_timestamp_index, DEFAULT_PARSE_INTERVAL_IN_MS)
+    # rise_of_start_end_volume_in_percentage_120_minutes = TechnicalIndicatorDBData(
+    #     _timestamp_index, OneOrTenSecsMSMultiple(mins_to_ms(1440)), 2880)
 
 
 class DB(pymongo.database.Database, metaclass=ABCMeta):
     def __init__(self, db_name):
         self.db_name = db_name
+        try:
+            self._db_map = getattr(DBMapper, self.db_name).value
+        except:
+            LOG.error(f"DB {self.db_name} is not mapped in {DBMapper}.")
+            raise UnmappedDB(f"DB {self.db_name} is not mapped in {DBMapper}.")
         super().__init__(mongo_client, self.db_name)
 
         if not isinstance(self, ValidatorDB) and db_name != VALIDATOR_DB:
             self.end_ts = ValidatorDB(self.db_name).finish_ts
 
-        self.timestamp_doc_key = None
-        with contextlib.suppress(KeyError):
-            self.timestamp_doc_key = DBMapper.__getitem__(self.db_name).value.db_timeframe_index.document
+        if mapped_db := DBMapper.__getitem__(self.db_name).value:
+            self.timestamp_doc_key = mapped_db.db_timeframe_index.document
+            self.atomicity = mapped_db.atomicity
+        else:
+            self.timestamp_doc_key = None
+            self.atomicity = None
 
-        self.atomicity = None
-        with contextlib.suppress(KeyError):
-            self.atomicity = DBMapper.__getitem__(self.db_name).value.atomicity
-
-    def __getattr__(self, collection):
+    def __getattr__(self, collection: str):
         return DBCol(self, collection)
 
     def clear_higher_than(self, timestamp: int, document_key: str) -> bool:
@@ -134,24 +156,38 @@ class DB(pymongo.database.Database, metaclass=ABCMeta):
                 self.drop_collection(col)
         return True
 
-    def clear_collections_between(self, lower_bound, higher_bound, document_key=None) -> bool:
+    def clear_collections_between(self, lower_bound, higher_bound) -> bool:
         for col in self.list_collection_names():
-            getattr(self, col).clear_between(lower_bound, higher_bound, document_key=document_key)
+            getattr(self, str(col)).clear_between(lower_bound, higher_bound)
         return True
+
+
+class TechnicalIndicatorDB(DB, ABC):
+    def __init__(self, db_name):
+        super().__init__(db_name)
 
 
 class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
     USE_INTERNAL_MAPPED_TIMESTAMP = object()
 
     def __init__(self, db_instance_or_name: [str, DB], collection=DEFAULT_COL_SEARCH):
-        self.db_name = db_instance_or_name if isinstance(db_instance_or_name, str) else db_instance_or_name.db_name
-        try:
-            self._timestamp_doc_key = DBMapper.__getitem__(self.db_name).value.db_timeframe_index.document
-        except KeyError:
-            self._timestamp_doc_key = None
+        if isinstance(db_instance_or_name, str):
+            self.db_name = db_instance_or_name
+            self._db_map = getattr(DBMapper, self.db_name).value
+            self._timestamp_doc_key = None if not self._db_map else self._db_map.db_timeframe_index.document
+        else:
+            self._db_map = db_instance_or_name._db_map
+            self.db_name = db_instance_or_name.db_name
+            self._timestamp_doc_key = None if not self._db_map else self._db_map.db_timeframe_index.document
 
         self._collection = collection
         super().__init__(db_instance_or_name if isinstance(db_instance_or_name, DB) else DB(self.db_name), self._collection)
+
+    def __getattr__(self, item):
+        if(item not in dir(self)):
+            raise KeyError("Attribute doesn't exist in the object")
+        else:
+            return super.__getattribute__(item)
 
     def column_between(self, lower_bound, higher_bound, doc_key=USE_INTERNAL_MAPPED_TIMESTAMP, limit=0, sort_value=pymongo.DESCENDING,
                        ReturnType: Union[Optional, TradesChart, TradeData] = None) -> Iterator:
@@ -169,22 +205,21 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             yield res if not ReturnType else ReturnType(**res)
 
     def most_recent_timeframe(self, document_key=None) -> int:
-        return self._doc_key_endpoint(True, document_key) if document_key else self._doc_key_endpoint(True)
+        return self._doc_key_endpoint(True)
 
-    def oldest_timeframe(self, document_key=None) -> int:
-        return self._doc_key_endpoint(False, document_key) if document_key else self._doc_key_endpoint(False)
+    def oldest_timeframe(self) -> int:
+        return self._doc_key_endpoint(False)
 
     def all_tf_column(self, column_name):
         return self.column_between(self.oldest_timeframe(column_name), self.most_recent_timeframe(column_name), column_name)
 
-    def _doc_key_endpoint(self, most_recent: bool, doc_key=None) -> int:
-        doc_key = doc_key if doc_key else self._timestamp_doc_key
+    def _doc_key_endpoint(self, most_recent: bool) -> int:
         try:
-            endpoints = next(self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1))[doc_key], \
-                        next(self.column_between(0, get_current_second_in_ms(), doc_key=doc_key, limit=1, sort_value=1))[doc_key]
+            endpoints = next(self.column_between(0, get_current_second_in_ms(), doc_key=self._timestamp_doc_key, limit=1))[self._timestamp_doc_key], \
+                        next(self.column_between(0, get_current_second_in_ms(), doc_key=self._timestamp_doc_key, limit=1, sort_value=1))[self._timestamp_doc_key]
         except StopIteration as e:
-            LOG.error("Collection '%s' from database '%s' contains no data with key '%s'.", self._collection, self.db_name, doc_key)
-            raise InvalidDataProvided(f"Collection '{self._collection}' from database '{self.db_name}' contains no data with key '{doc_key}'.") from e
+            LOG.error("Collection '%s' from database '%s' contains no data with key '%s'.", self._collection, self.db_name, self._timestamp_doc_key)
+            raise InvalidDataProvided(f"Collection '{self._collection}' from database '{self.db_name}' contains no data with key '{self._timestamp_doc_key}'.") from e
 
         return max(endpoints) if most_recent else min(endpoints)
 
@@ -197,15 +232,18 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
     def _init_indexes(self):
         if self._timestamp_doc_key and not self.find_one({}):  # find_one() assumes indexes were correctly initialized on first run.
             self.create_index([(self._timestamp_doc_key, -1)],
-                              unique=DBMapper.__getitem__(self.db_name).value.db_timeframe_index.unique)
+                              unique=self._db_map.db_timeframe_index.unique)
 
     def find_all(self):
+        return super().find({})
+
+    def find_all_atomicity(self):
         return super().find({})
 
     def delete_all(self):
         self.delete_many({})
 
-    def and_query(self, lower_bound, higher_bound, doc_key=None):
+    def _and_query(self, lower_bound, higher_bound, doc_key=None):
         if not doc_key and not (doc_key := self._timestamp_doc_key):
             LOG.error("Internal Document key needs to be provided as default internal one is not valid.")
             raise InvalidDocumentKeyProvided("Document key needs to be provided as default internal one is not valid.")
@@ -218,7 +256,7 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             if self.database.atomicity == DEFAULT_PARSE_INTERVAL_IN_MS:
                 return next(super().find({self._timestamp_doc_key: timestamp_to_query}))
             else:
-                return next(self.and_query(timestamp_to_query - self.database.atomicity, timestamp_to_query))
+                return next(self._and_query(timestamp_to_query - self.database.atomicity, timestamp_to_query))
         except StopIteration:
             err_message = f"No valid timestamp value {(datetime.fromtimestamp(timestamp_to_query / 1000))} from db {self.db_name} and collection {self.name}"
             LOG.error(err_message)
@@ -226,25 +264,27 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
 
     def find_timeseries(self, timestamps_to_query: [int, TimeseriesMinMax, List, range]):
         if self.database.atomicity == 1 and not isinstance(timestamps_to_query, TimeseriesMinMax):
-            LOG.error("For timestamps of atomicity of 1 use 'TimeseriesMinMax'.")
-            raise InvalidAtomicityDataType("For timestamps of atomicity of 1 use 'TimeseriesMinMax'.")
+            LOG.error("For timestamps of atomicity 1 use 'TimeseriesMinMax'.")
+            raise InvalidAtomicityDataType("For timestamps of atomicity 1 use 'TimeseriesMinMax'.")
         elif isinstance(timestamps_to_query, int):
             return self.find_timeseries_one(timestamps_to_query)
         elif isinstance(timestamps_to_query, TimeseriesMinMax):
-            return self.and_query(timestamps_to_query.range_lower_bound, timestamps_to_query.range_higher_bound)
+            return self._and_query(timestamps_to_query.range_lower_bound, timestamps_to_query.range_higher_bound)
         elif self.database.atomicity != DEFAULT_PARSE_INTERVAL_IN_MS:
             return super().find({self._timestamp_doc_key: {DBQueryOperators.IN.value: range(
-                timestamps_to_query.start, timestamps_to_query.stop, 30000)}})
+                timestamps_to_query.start, timestamps_to_query.stop, self.database.atomicity)}})
+        elif isinstance(timestamps_to_query, range):
+            timestamps_to_query = timestamps_to_query if isinstance(timestamps_to_query, list) else [*timestamps_to_query]
+            query = {self._timestamp_doc_key: {DBQueryOperators.IN.value: timestamps_to_query}}
+            timestamps_count = len(timestamps_to_query)
+            query_count = self.count_documents(query)
 
-        timestamps_to_query = timestamps_to_query if isinstance(timestamps_to_query, list) else [*timestamps_to_query]
-        query = {self._timestamp_doc_key: {DBQueryOperators.IN.value: timestamps_to_query}}
-        timestamps_count = len(timestamps_to_query)
-        query_count = self.count_documents(query)
-
-        if query_count != timestamps_count and query_count < int(timestamps_count / (self.database.atomicity / DEFAULT_PARSE_INTERVAL_IN_MS)):
-            LOG.error(f"Invalid number of results retrieved, expected {timestamps_count} and got {query_count}.")
-            raise InvalidResultsNumber(f"Invalid number of results retrieved, expected {timestamps_count} and got {query_count}.")
-        return super().find(query)
+            if query_count != timestamps_count and query_count < int(timestamps_count / (self.database.atomicity / DEFAULT_PARSE_INTERVAL_IN_MS)):
+                LOG.error(f"Invalid number of results retrieved, expected {timestamps_count} and got {query_count}.")
+                raise InvalidResultsNumber(f"Invalid number of results retrieved, expected {timestamps_count} and got {query_count}.")
+            return super().find(query)
+        else:
+            raise InvalidDataProvided("argument provided has invalid type")
 
     def find(self, *args, **kwargs):
         if args[0]:
@@ -263,12 +303,12 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
         self._init_indexes()
         return super().insert_many(data)
 
-    def clear_between(self, lower_bound, higher_bound, document_key=None):
-        if not document_key and not (document_key := self._timestamp_doc_key):
+    def clear_between(self, lower_bound, higher_bound):
+        if not (doc_key := self._timestamp_doc_key):
             LOG.error("Timestamp document key needs to be provided.")
             raise InvalidDocumentKeyProvided("Timestamp document key needs to be provided.")
-        self.delete_many({DBQueryOperators.AND.value: [{document_key: {DBQueryOperators.HIGHER_EQ.value: lower_bound}},
-                                                       {document_key: {DBQueryOperators.LOWER_EQ.value: higher_bound}}]})
+        self.delete_many({DBQueryOperators.AND.value: [{doc_key: {DBQueryOperators.HIGHER_EQ.value: lower_bound}},
+                                                       {doc_key: {DBQueryOperators.LOWER_EQ.value: higher_bound}}]})
 
 
 class ValidatorDB(DB, ABC):
@@ -310,22 +350,19 @@ class ValidatorDB(DB, ABC):
 class AggtradesValidatorDB(ValidatorDB, ABC):
     def set_valid_timestamps(self):
         validate_db_default_col_conn = DBCol(self.validate_db_name, DEFAULT_COL_SEARCH)
-        oldest_tf = validate_db_default_col_conn.oldest_timeframe()
         most_recent_timeframe = validate_db_default_col_conn.most_recent_timeframe()
-        parse_from_ts = oldest_tf if not self.finish_ts else self.finish_ts
-        end_ts_log_msg = f"End_ts ts set to " \
-                         f"{datetime.fromtimestamp(most_recent_timeframe / 1000)} for db {self.validate_db_name}."
-        if oldest_tf:
+        if oldest_tf := validate_db_default_col_conn.oldest_timeframe():
+            parse_from_ts = oldest_tf if not self.finish_ts else self.finish_ts
             for ts in range(parse_from_ts, most_recent_timeframe, TEN_SECONDS_IN_MS):
                 try:
                     next(validate_db_default_col_conn.column_between(ts, ts + TEN_SECONDS_IN_MS))
                 except StopIteration:
-                    LOG.info(end_ts_log_msg)
-                    self.set_finish_ts(most_recent_timeframe)
-                    LOG.info("There are missing trades after '%s'.", ts)
-                    raise StopIteration(("There are missing trades after '%s'.", ts))
+                    LOG.warning("There are missing trades after '%s', setting finish time to '%s' "
+                                "and going from there.", ts, datetime.fromtimestamp(ts / 1000))
+                    self.set_finish_ts(ts)
+                    return
             else:
-                LOG.info(end_ts_log_msg)
+                LOG.info(f"End_ts ts set to {datetime.fromtimestamp(most_recent_timeframe / 1000)} for db {self.validate_db_name}.")
                 self.set_finish_ts(most_recent_timeframe)
 
 
@@ -345,7 +382,6 @@ class TradesChartValidatorDB(ValidatorDB, ABC):
             return getattr(self, item)
 
     def set_valid_timestamps(self):
-        time.sleep(2)
         time_intervals_start_ts = []
         time_intervals_end_ts = []
         for value in self.done_intervals_ts_collection.find_all():
@@ -356,16 +392,15 @@ class TradesChartValidatorDB(ValidatorDB, ABC):
             return False
         else:
             start_ts, end_ts = min(time_intervals_start_ts), max(time_intervals_end_ts)
-            possible_start_ts = [start_ts, start_ts - DEFAULT_PARSE_INTERVAL_IN_MS]
+            possible_start_ts = [start_ts, start_ts - DEFAULT_PARSE_INTERVAL_IN_MS]  # For some reason sometimes there is a Ten secs gap between start_ts.
             if self.finish_ts and self.finish_ts not in possible_start_ts:
-                err_msg = f"starting timestamp does not begin when finish_ts ends, invalid data provided. " \
-                          f"finish ts {self.finish_ts} possible start ts {possible_start_ts}, db name {self.validate_db_name}"
-                # For some reason sometimes there is a Ten secs gap between start_ts.
-                LOG.error(err_msg)
-                raise InvalidStartTimestamp(err_msg)
+                err_msg = f"starting timestamp does not begin when finish ts ends, invalid data provided, deleting " \
+                          f"after finish ts and prooceding to parse from there "
+                LOG.warning(err_msg)
+                return
 
-            if not self.start_ts:
-                self.set_start_ts(end_ts)  # doesn't actually put the right start_ts, but inserts the end_ts instead.
+            if not self.start_ts:  # init start ts, doesn't actually put the right start_ts, but inserts the end_ts instead.
+                self.set_start_ts(end_ts)
                 LOG.info(f"Start ts set to {end_ts} for db {self.validate_db_name}.")
 
         time_intervals_end_ts.sort()
@@ -419,16 +454,6 @@ def list_dbs():
 def delete_dbs_all():
     for db_name in [deleteable for deleteable in list_dbs() if deleteable not in ['admin', 'config', 'local']]:
         mongo_client.drop_database(db_name)
-
-
-def delete_dbs_with_text(text) -> None:
-    for db in [dbs for dbs in list_dbs() if text in dbs]:
-        mongo_client.drop_database(db)
-
-
-def delete_collections_with_text(text) -> None:
-    for db in list_dbs():
-        DB(db).delete_collections_with_text(text)
 
 
 def change_charts_values(timeframe_in_minutes):
@@ -513,17 +538,14 @@ def create_index_db_cols(db, field) -> None:
 # query_starting_ts('parsed_aggtrades', 'adausdt')
 # insert_one_db('end_timestamp_aggtrades_validator_db', 'timestamp', {'timestamp': 1640955601009})
 
-# delete_dbs_with_text("trades_chart")
-# DB("Timestamps_Validator").delete_collections_with_text("trades_chart")
-# delete_collections_with_text('EURUSDT')
+def delete_dbs_and_cols_in_db_with_text(text: str):
+    for db in [dbs for dbs in list_dbs() if text in dbs]:
+        mongo_client.drop_database(db)
 
-# delete_dbs_with_text("relative_volume")
-# DB("Timestamps_Validator").delete_collections_with_text("relative_volume")
+    DB(VALIDATOR_DB).delete_collections_with_text(text)
 
-# delete_dbs_with_text("ten_seconds")
-# DB("Timestamps_Validator").delete_collections_with_text("ten_seconds")
-# delete_dbs_with_text("fund_data")
-# DB("Timestamps_Validator").delete_collections_with_text("fund_data")
+# delete_dbs_and_cols_in_db_with_text('trades_chart')
+# DB(VALIDATOR_DB).delete_collections_with_text('EURUSDT')
 
 # def query_existing_ws_trades(start_ts, end_ts, ms_parse_interval):  # If BTCUSDT has trades working it assumes all other symbols were working.
 #     symbols_earliest_ts = min(list(start_ts.values()))

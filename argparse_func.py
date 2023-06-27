@@ -1,3 +1,4 @@
+import abc
 import argparse
 import enum
 import inspect
@@ -70,10 +71,8 @@ def get_argparse_execute_functions():
                                                                 "can be ran by multiple threads to speed up execution.")
     subparser.choices['simple-moving-average'].add_argument("--timeframe-in-minutes", type=int, required=True,
                                                             help="Simple moving average timeframe, in minutes.")
-    subparser.choices['relative-volume'].add_argument("--timeframe-in-minutes", type=int, required=True,
-                                                      help="Relative volume timeframe, in minutes.")
-    subparser.choices['total-volume'].add_argument("--timeframe-in-minutes", type=int, required=True,
-                                                      help="Relative volume timeframe, in minutes.")
+    subparser.choices['metrics-parser'].add_argument("--metric-db-mapper-name", type=str, help="DB mapper name.")
+
     subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 4), default=3,
                                                             help="Number of threads to run on binance API, max 3.")
     ONE_HOUR_CHART_THREADS = 8
@@ -103,16 +102,7 @@ def get_argparse_execute_functions():
     subparser.choices['trades-chart-runner'].add_argument("--eight-days-threads-number", type=int, default=EIGHT_DAYS_CHART_THREADS,
                                                             help="Number of eight days trades chart threads to run.")
     subparser.choices['parse-aggtrades-runner']
-    subparser.choices['relative-volume-runner']
-    subparser.choices['get-trades-chart-metric-distribution'].add_argument("--trades-chart-timeframe", type=int,
-                                                              choices=[timeframe.value for timeframe in TradesChartTimeframes],
-                                                              help="Trades chart timeframe.")
-    subparser.choices['get-trades-chart-metric-distribution'].add_argument("--symbol", type=str, required=True,
-                                                            help="Symbol to get distribution overview.")
-    subparser.choices['get-trades-chart-metric-distribution'].add_argument("--trades-chart-metric-name", type=str, required=True,
-                                                            help="metric name to parse.")
-    subparser.choices['get-trades-chart-metric-distribution'].add_argument("--trades-chart-decimal-places", type=int, required=True,
-                                                            help="decimal places for metric results.")
+    subparser.choices['technical-indicators-runner']
 
     parsed_args = vars(parent_parser.parse_args())
 
