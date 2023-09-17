@@ -53,8 +53,6 @@ def alpha_algo_metrics_distribution_runner(args):
                 except KeyError:
                     liets[counter] = value
 
-    print("HERE")
-
     aggtrade_threads = []
     symbol_volumes = DBCol('total_volume_60_minutes', 'total_volume').find_timeseries_one(start_ts)['total_volume']
     symbols = sorted(symbol_volumes, key=symbol_volumes.get, reverse=True)[4:31]

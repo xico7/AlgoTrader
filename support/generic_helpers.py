@@ -5,9 +5,16 @@ from data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS
 def get_current_second_in_ms():
     return int(time.time()) * 1000
 
+def seconds_to_ms(seconds) -> int:
+    return int(seconds * 1000)
+
 
 def mins_to_ms(minutes) -> int:
     return int(minutes * 1000 * 60)
+
+
+def ms_to_mins(milliseconds) -> int:  # Not used but useful sometimes.
+    return int(milliseconds / 1000 / 60)
 
 
 def get_next_millisecond_modulo(start_timestamp, milliseconds: int):
