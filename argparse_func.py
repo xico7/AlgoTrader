@@ -15,6 +15,7 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
 
 RUN_DEFAULT_ARG = 'run-default'
 
+
 class InvalidArgumentsProvided(Exception): pass
 
 
@@ -27,6 +28,8 @@ def add_tasks_subparsers(parent_parser, tasks):
     subparser.add_parser(RUN_DEFAULT_ARG)
     subparser.choices['save-aggtrades'].add_argument("--start-ts", type=int, required=True, help="start timestamp to get binance API aggtrades.")
     subparser.choices['save-aggtrades'].add_argument("--end-ts", type=int, required=True, help="end timestamp to get binance API aggtrades.")
+    subparser.choices['transform-trade-data'].add_argument("--chart-minutes", type=int, required=True,
+                                                           help="TODO")
     subparser.choices['transform-trade-data'].add_argument("--multithread-start-end-timeframe", type=int, nargs=2, required=True,
                                                            help="Run trade data with given start/end timestamp (timestamp in ms) so it "
                                                                 "can be ran by multiple threads to speed up execution.")
@@ -57,9 +60,8 @@ def add_tasks_subparsers(parent_parser, tasks):
     subparser.choices['trades-chart-runner'].add_argument("--eight-days-threads-number", type=int, default=EIGHT_DAYS_CHART_THREADS,
                                                             help="Number of eight days trades chart threads to run.")
 
-    subparser.choices['parse-aggtrades-runner'].add_argument("--h", help="run multiple program processes that parse the aggtrades.")
-    subparser.choices['technical-indicators-runner'].add_argument("--h", help="run multiple program processes that parse the TA indicators.")
-    subparser.choices['run-default'].add_argument("--h", help="run multiple program processes with binance aggtrades, "
+    subparser.choices['technical-indicators-runner'].add_argument("--helper-text", help="run multiple program processes that parse the TA indicators.")
+    subparser.choices['run-default'].add_argument("--helper-text", help="run multiple program processes with binance aggtrades, "
                                                        "parse the aggtrades and transform them in a trades chart")
 
 
@@ -85,9 +87,7 @@ def get_argparse_execute_functions():
         LOG.error("No running arguments were provided, please run the help command to see program usage.")
         raise InvalidArgumentsProvided("No running arguments were provided, please run the help command to see program usage.")
 
-    execute_functions = []
-
-    def get_tasks_exec_functions(parsed_args_command) -> list:
+    def get_exec_func_with_args(parsed_args_command) -> list:
         for task in tasks_parser:
             base_execute_module_name = parsed_args_command.replace("-", "_")
             if base_execute_module_name == task.name:
@@ -103,13 +103,9 @@ def get_argparse_execute_functions():
 
                 for function in execute_module_functions:
                     if function.__name__ == base_execute_module_name:
-                        execute_functions.append((function, parsed_args) if inspect.getfullargspec(function).args else (function, None))
+                        return [(function, parsed_args)] if inspect.getfullargspec(function).args else [(function, None)]
 
-    if not parsed_args['command'] == 'run-default':
-        get_tasks_exec_functions(parsed_args['command'])
+    if parsed_args['command'] == RUN_DEFAULT_ARG:
+        return [(RUN_DEFAULT_ARG, None)]
     else:
-        get_tasks_exec_functions('parse-aggtrades-runner')
-        get_tasks_exec_functions('aggtrades-runner')
-        get_tasks_exec_functions('trades-chart-runner')
-
-    return execute_functions
+        return get_exec_func_with_args(parsed_args['command'])

@@ -6,7 +6,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Union, Iterator, List
+from typing import Optional, Union, Iterator, List, Tuple
 import pymongo
 from support.generic_helpers import get_current_second_in_ms, mins_to_ms
 from pymongo import MongoClient, database
@@ -21,11 +21,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from data_handling.data_structures import TradeData, TradesChart
 
-localhost = 'mongodb://localhost:27017/'
-#"172.23.224.1"
+localhost = '172.23.224.1'  #  'mongodb://localhost:27017/'  # Find Ipv4 IP automatically (ps ipconfig.. ipv4)
+
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
-mongo_client = MongoClient(host=localhost, maxPoolSize=0) #TODO: this ip should be found automatically..
+mongo_client = MongoClient(host=localhost, maxPoolSize=0)
 
 
 class InvalidOperationForGivenClass(Exception): pass
@@ -110,6 +110,13 @@ class TradesChartTimeframeValuesAtomicity(Enum):
     TWO_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.TWO_DAYS, DEFAULT_PARSE_INTERVAL_IN_MS * 6)
     FOUR_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.FOUR_DAYS, DEFAULT_PARSE_INTERVAL_IN_MS * 12)
     EIGHT_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.EIGHT_DAYS, DEFAULT_PARSE_INTERVAL_IN_MS * 48)
+
+
+def get_trades_chart_tf_atomicity() -> List[Tuple]:
+    trades_chart_values_atomicities = []
+    for trades_chart_enum in TradesChartTimeframeValuesAtomicity:
+        trades_chart_values_atomicities.append((trades_chart_enum.value.timeframe, trades_chart_enum.value.atomicity))
+    return trades_chart_values_atomicities
 
 
 class DBMapper(Enum):
@@ -498,11 +505,6 @@ def list_dbs():
     return mongo_client.list_database_names()
 
 
-def delete_dbs_all():
-    for db_name in [deleteable for deleteable in list_dbs() if deleteable not in ['admin', 'config', 'local']]:
-        mongo_client.drop_database(db_name)
-
-
 def change_charts_values(timeframe_in_minutes):
     chart_tf_db = BASE_TRADES_CHART_DB.format(timeframe_in_minutes)
     mins_to_validate_at_a_time = ONE_DAY_IN_MINUTES
@@ -578,8 +580,6 @@ def create_index_db_cols(db, field) -> None:
 # create_index_db_cols(trades_chart.format(5), 'start_ts')
 
 # create_index_db_cols('parsed_aggtrades', 'timestamp')
-
-# delete_dbs_all()
 # Tests:
 # print("here")
 # query_starting_ts('parsed_aggtrades', 'adausdt')
@@ -596,7 +596,6 @@ def delete_dbs_and_cols_in_db_with_text(text: str):
 # delete_dbs_and_cols_in_db_with_text('fund_data')
 
 # delete_dbs_and_cols_in_db_with_text('relative_vol')
-print("Here")
 
 # DB(VALIDATOR_DB).delete_collections_with_text('EURUSDT')
 

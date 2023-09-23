@@ -6,8 +6,11 @@ import time
 
 # Sometimes mongodb's port is being used by other process, replace that process with MongoDB
 def run_mongodb_startup_process():
-    subprocess.run(['powershell.exe', './ForceStartMongoDBWindows.ps1'], shell=True)
-    time.sleep(20)
+    if os.name == 'nt':
+        subprocess_output = subprocess.run(['powershell.exe', 'Get-Service MongoDB'], capture_output=True, shell=True)
+        if not 'Running' in subprocess_output.stdout.decode('utf-8'):
+            subprocess.run(['powershell.exe', './ForceStartMongoDBWindows.ps1'], shell=True)
+            time.sleep(20)
 
 
 def run_algotrader_process(task_to_run, task_args=[]):

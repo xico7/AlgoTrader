@@ -2,6 +2,8 @@ import logging
 import itertools
 from datetime import datetime
 import requests
+from requests import ReadTimeout
+
 import logs
 from data_handling.data_helpers.vars_constants import USDT, BNB
 from data_handling.data_structures import CacheAggtrades
@@ -9,12 +11,17 @@ from binance import Client
 from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
-binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 80})  # ignore highlight, bugged typing in binance lib.
+binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 90})  # ignore highlight, bugged typing in binance lib.
 
 
 def get_next_parse_minutes_trades(symbol, start_ts, end_ts):
-    trades = binance_client.get_aggregate_trades(
-        **{'symbol': symbol, 'startTime': start_ts, 'endTime': end_ts, 'limit': 1000})
+    while True:
+        try:
+            trades = binance_client.get_aggregate_trades(
+                **{'symbol': symbol, 'startTime': start_ts, 'endTime': end_ts, 'limit': 1000})
+            break
+        except ReadTimeout as e:
+                pass
 
     if len(trades) < 1000:
         return trades

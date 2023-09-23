@@ -1,8 +1,7 @@
 import copy
 import logging
-import time
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import Optional, Tuple
 from pymongo.errors import BulkWriteError
 import logs
 from support.decorators_extenders import init_only_existing
@@ -16,7 +15,7 @@ from MongoDB.db_actions import DB, DBCol, ValidatorDB, TradesChartValidatorDB, \
 from support.generic_helpers import round_last_ten_secs
 
 
-class InvalidStartTimestamp(Exception): pass
+class InvalidValidatorTimestamps(Exception): pass
 
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
@@ -89,9 +88,10 @@ class TradeDataGroup:
                 filled_trades = {i: TradeData(None, 0, 0, i) for i in range(start_ts, end_ts + 1, DEFAULT_PARSE_INTERVAL_IN_MS)}
                 for trade in trades:
                     filled_trades[trade.timestamp] = trade
-                trades = filled_trades
-
-            self.symbols_data_group[symbol] = TradesChart(**{'trades': tuple(v for v in trades.values())})
+                trades = tuple(v for v in filled_trades.values())
+            else:
+                trades = tuple(v for v in trades)
+            self.symbols_data_group[symbol] = TradesChart(**{'trades': trades})
 
     def add_trades_interval(self, future_trades):
         for symbol, symbol_trade_info in self.symbols_data_group.items():
@@ -302,11 +302,11 @@ class Trade:
 
         if not self._first_run_start_data:
             LOG.error(f"Starting value not found for {START_TS_AGGTRADES_VALIDATOR_DB}.")
-            raise InvalidStartTimestamp(f"Starting value not found for {START_TS_AGGTRADES_VALIDATOR_DB}.")
+            raise InvalidValidatorTimestamps(f"Starting value not found for {START_TS_AGGTRADES_VALIDATOR_DB}.")
 
         if not self._finish_run_ts:
             LOG.error(f"Starting value not found for {END_TS_AGGTRADES_VALIDATOR_DB}.")
-            raise InvalidStartTimestamp(f"Starting value not found for {END_TS_AGGTRADES_VALIDATOR_DB}.")
+            raise InvalidValidatorTimestamps(f"Starting value not found for {END_TS_AGGTRADES_VALIDATOR_DB}.")
 
         for symbol in self.symbols:
             self.start_price[symbol] = 0
@@ -317,11 +317,11 @@ class Trade:
         trade_data_group = TradeDataGroup(start_ts, end_ts, PARSED_AGGTRADES_DB, False, symbols)
 
         for symbol in symbols:
-            for trade in trade_data_group.symbols_data_group[symbol]:
-                if t := trade.price:
-                    self.end_price[symbol] = t
+            for trade in trade_data_group.symbols_data_group[symbol].trades:
+                if trade.price:
+                    self.end_price[symbol] = trade.price
                     if not self.start_price[symbol]:
-                        self.start_price[symbol] = t
+                        self.start_price[symbol] = trade.price
                 try:
                     tf_trades = self.ts_data[symbol][round_last_ten_secs(trade.timestamp)]
                     tf_trades.price += (trade.price - tf_trades.price) * trade.quantity / (tf_trades.quantity + trade.quantity)
@@ -373,7 +373,10 @@ class FundTimeframeTrade(Trade):
     def __init__(self, ratio, start_ts: Optional[int] = None):
         from data_handling.data_helpers.vars_constants import FUND_SYMBOLS_USDT_PAIRS
 
-        super().__init__(FUND_SYMBOLS_USDT_PAIRS)
+        try:
+            super().__init__(FUND_SYMBOLS_USDT_PAIRS)
+        except InvalidValidatorTimestamps:
+            raise
         self.db_conn = DBCol(self.db_name, FUND_DATA_COLLECTION)
 
         if start_ts:

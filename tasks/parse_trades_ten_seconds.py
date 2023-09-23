@@ -3,7 +3,7 @@ import re
 import time
 import requests
 import logs
-from data_handling.data_structures import SymbolsTimeframeTrade, FundTimeframeTrade
+from data_handling.data_structures import SymbolsTimeframeTrade, FundTimeframeTrade, InvalidValidatorTimestamps
 from data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS, FUND_SYMBOLS_USDT_PAIRS, \
     coingecko_marketcap_api_link
 
@@ -42,22 +42,27 @@ def parse_trades_ten_seconds():
     fund_stop_and_save_timeframe = 0
 
     LOG.info("Beginning to parse ten seconds trades.")
-    first_iter = True
-    while True:
-        if first_iter:
-            parse_fund_data = FundTimeframeTrade(coin_ratio_marketcap())
-            parse_aggtrade = SymbolsTimeframeTrade()
-            first_iter = False
-        else:
-            if fund_stop_and_save_timeframe:
-                parse_fund_data = FundTimeframeTrade(coin_ratio, fund_stop_and_save_timeframe)
-            else:
-                parse_fund_data = FundTimeframeTrade(coin_ratio, parse_fund_data.end_ts + TEN_SECONDS_IN_MS)
 
-            if aggtrades_stop_and_save_timeframes:
-                parse_aggtrade = SymbolsTimeframeTrade(aggtrades_stop_and_save_timeframes)
-            else:
-                parse_aggtrade = SymbolsTimeframeTrade(parse_aggtrade.end_ts + TEN_SECONDS_IN_MS)
+    parse_fund_data = None
+    parse_aggtrade = None
+    while not parse_fund_data or not parse_aggtrade:
+        try:
+            parse_fund_data = FundTimeframeTrade(coin_ratio)
+            parse_aggtrade = SymbolsTimeframeTrade()
+        except InvalidValidatorTimestamps:
+            LOG.info("No valid timestamps provided from 'parsed aggtrades' database, waiting for 10 minutes and trying again")
+            time.sleep(600)
+
+    while True:
+        if fund_stop_and_save_timeframe:
+            parse_fund_data = FundTimeframeTrade(coin_ratio, fund_stop_and_save_timeframe)
+        else:
+            parse_fund_data = FundTimeframeTrade(coin_ratio, parse_fund_data.end_ts + TEN_SECONDS_IN_MS)
+
+        if aggtrades_stop_and_save_timeframes:
+            parse_aggtrade = SymbolsTimeframeTrade(aggtrades_stop_and_save_timeframes)
+        else:
+            parse_aggtrade = SymbolsTimeframeTrade(parse_aggtrade.end_ts + TEN_SECONDS_IN_MS)
 
         if parse_fund_data.finished and parse_aggtrade.finished:
             LOG.info("Finished parsing ten seconds trades, sleeping for ten minutes.")
