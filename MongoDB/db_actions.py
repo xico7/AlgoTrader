@@ -14,7 +14,7 @@ import logs
 from data_handling.data_helpers.vars_constants import DBQueryOperators, DEFAULT_COL_SEARCH, \
     FINISH_TS_VALIDATOR_DB_SUFFIX, VALIDATOR_DB, FINISH_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECONDS_IN_MS, \
     ONE_DAY_IN_MINUTES, VALID_END_TS_VALIDATOR_DB_SUFFIX, VALID_END_TS, DONE_INTERVAL_VALIDATOR_DB_SUFFIX, \
-    BASE_TRADES_CHART_DB, DEFAULT_PARSE_INTERVAL_IN_MS, DEFAULT_PARSE_INTERVAL_SECONDS
+    BASE_TRADES_CHART_DB, DEFAULT_PARSE_INTERVAL_IN_MS, DEFAULT_PARSE_INTERVAL_SECONDS, TRADES_CHART_DB
 
 from typing import TYPE_CHECKING
 
@@ -117,6 +117,12 @@ def get_trades_chart_tf_atomicity() -> List[Tuple]:
     for trades_chart_enum in TradesChartTimeframeValuesAtomicity:
         trades_chart_values_atomicities.append((trades_chart_enum.value.timeframe, trades_chart_enum.value.atomicity))
     return trades_chart_values_atomicities
+
+
+#TODO: finish Putting this DBMApper dyunamic
+
+DBMapper2 = Enum('DBMapper2', {f'{TRADES_CHART_DB}_60_minutes': DBData(_trades_chart_index, TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity),
+                                   f'{TRADES_CHART_DB}_120_minutes': DBData(_trades_chart_index, TradesChartTimeframeValuesAtomicity.TWO_HOURS.value.atomicity)})
 
 
 class DBMapper(Enum):

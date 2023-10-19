@@ -29,9 +29,10 @@ DONE_INTERVAL_VALIDATOR_DB_SUFFIX = "_done_interval_timestamp_validator"
 VALID_END_TS_VALIDATOR_DB_SUFFIX = "_valid_end_timestamp_validator"
 END_TS_AGGTRADES_VALIDATOR_DB = "end_timestamp_aggtrades_validator_db"
 START_TS_AGGTRADES_VALIDATOR_DB = "start_timestamp_aggtrades_validator_db"
-TRADES_CHART_DB_CONTAINING_NAME = 'trades_chart'
+TRADES_CHART_DB = 'trades_chart_db'
+TRADES_CHART_DB_ALL = 'trades_chart_db_all'
 REL_VOLUME_DB_CONTAINING_NAME = 'relative_volume'
-BASE_TRADES_CHART_DB = TRADES_CHART_DB_CONTAINING_NAME + '_{}_minutes'
+BASE_TRADES_CHART_DB = TRADES_CHART_DB + '_{}_minutes'
 TRADE_DATA_CACHE_TIME_IN_MS = ONE_DAY_IN_MS
 
 

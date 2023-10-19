@@ -1,11 +1,10 @@
 import logging
 import threading
 import time
-
 import logs
 from MongoDB.db_actions import ValidatorDB, InvalidStartTimestamp, TradesChartValidatorDB, TradesChartTimeframes
-from data_handling.data_helpers.vars_constants import BASE_TRADES_CHART_DB, TEN_SECONDS_IN_MS, \
-    TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MS, ONE_DAY_IN_MINUTES
+from data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECONDS_IN_MS, \
+    TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MS
 from support.generic_helpers import mins_to_ms
 from support.threading_helpers import run_algotrader_process
 
@@ -13,8 +12,8 @@ from support.threading_helpers import run_algotrader_process
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
-def create_run_timeframe_chart_threads(timeframe: int, number_of_threads: int = 1):
-    trade_chart_db_conn = ValidatorDB(BASE_TRADES_CHART_DB.format(timeframe))
+def create_run_timeframe_chart_threads(number_of_threads: int = 5):
+    trade_chart_db_conn = ValidatorDB(TRADES_CHART_DB)
     threads = []
 
     if begin_ts := trade_chart_db_conn.finish_ts:
@@ -45,41 +44,15 @@ def create_run_timeframe_chart_threads(timeframe: int, number_of_threads: int = 
 
 def trades_chart_runner(args):
     #TODO: Where is logging telling what we are 'starting' to do??
-    TradesChartValidatorDB(TradesChartTimeframes.ONE_HOUR.value).set_valid_timestamps()
-    # TradesChartValidatorDB(TradesChartTimeframes.TWO_HOURS.value).set_valid_timestamps()
-    # TradesChartValidatorDB(TradesChartTimeframes.FOUR_HOURS.value).set_valid_timestamps()
-    # TradesChartValidatorDB(TradesChartTimeframes.EIGHT_HOURS.value).set_valid_timestamps()
-    # TradesChartValidatorDB(TradesChartTimeframes.ONE_DAY.value).set_valid_timestamps()
-    # TradesChartValidatorDB(TradesChartTimeframes.TWO_DAYS.value).set_valid_timestamps()
-    # TradesChartValidatorDB(TradesChartTimeframes.FOUR_DAYS.value).set_valid_timestamps()
-    # TradesChartValidatorDB(TradesChartTimeframes.EIGHT_DAYS.value).set_valid_timestamps()
+    #TODO: Aqui estou a fazer um 'mega' refactor.. tirar esta lógica, ter umas 3 threads em que cada uma faz os timeframes todos e tem tipo 2 dias de dados..
+    #TradesChartValidatorDB(TradesChartTimeframes.ONE_HOUR.value).set_valid_timestamps()
 
-    one_hour_threads = create_run_timeframe_chart_threads()
+    threads = create_run_timeframe_chart_threads()
 
     while True:
         if not any([thread.is_alive() for thread in one_hour_threads]):
             TradesChartValidatorDB(TradesChartTimeframes.ONE_HOUR.value).set_valid_timestamps()
             one_hour_threads = create_run_timeframe_chart_threads(60, args['one_hour_threads_number'])
-        # if not any([thread.is_alive() for thread in two_hour_threads]):
-        #     TradesChartValidatorDB(TradesChartTimeframes.TWO_HOURS.value).set_valid_timestamps()
-        #     two_hour_threads = create_run_timeframe_chart_threads(120, args['two_hours_threads_number'])
-        # if not any([thread.is_alive() for thread in four_hour_threads]):
-        #     TradesChartValidatorDB(TradesChartTimeframes.FOUR_HOURS.value).set_valid_timestamps()
-        #     four_hour_threads = create_run_timeframe_chart_threads(240, args['four_hours_threads_number'])
-        # if not any([thread.is_alive() for thread in eight_hour_threads]):
-        #     TradesChartValidatorDB(TradesChartTimeframes.EIGHT_HOURS.value).set_valid_timestamps()
-        #     eight_hour_threads = create_run_timeframe_chart_threads(480, args['eight_hours_threads_number'])
-        # if not any([thread.is_alive() for thread in one_day_threads]):
-        #     TradesChartValidatorDB(TradesChartTimeframes.ONE_DAY.value).set_valid_timestamps()
-        #     one_day_threads = create_run_timeframe_chart_threads(ONE_DAY_IN_MINUTES, args['one_day_threads_number'])
-        # if not any([thread.is_alive() for thread in two_day_threads]):
-        #     TradesChartValidatorDB(TradesChartTimeframes.TWO_DAYS.value).set_valid_timestamps()
-        #     two_day_threads = create_run_timeframe_chart_threads(ONE_DAY_IN_MINUTES * 2, args['two_days_threads_number'])
-        # if not any([thread.is_alive() for thread in four_day_threads]):
-        #     TradesChartValidatorDB(TradesChartTimeframes.FOUR_DAYS.value).set_valid_timestamps()
-        #     four_day_threads = create_run_timeframe_chart_threads(ONE_DAY_IN_MINUTES * 4, args['four_days_threads_number'])
-        # if not any([thread.is_alive() for thread in eight_day_threads]):
-        #     TradesChartValidatorDB(TradesChartTimeframes.EIGHT_DAYS.value).set_valid_timestamps()
-        #     eight_day_threads = create_run_timeframe_chart_threads(ONE_DAY_IN_MINUTES * 8, args['eight_days_threads_number'])
 
         time.sleep(20)
+
