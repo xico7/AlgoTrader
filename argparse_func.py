@@ -39,9 +39,6 @@ def add_tasks_subparsers(parent_parser, tasks):
     subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 4), default=3,
                                                             help="Number of threads to run on binance API, max 3.")
 
-    # TODO: Finish this refactor, add virtualization to bios settings.
-
-
     # Trades chart options.
     subparser.choices['trades-chart-runner'].add_argument("--one-hour-threads-number", type=int, default=ONE_HOUR_CHART_THREADS,
                                                             help="Number of one hour trades chart threads to run.")
@@ -61,8 +58,9 @@ def add_tasks_subparsers(parent_parser, tasks):
                                                             help="Number of eight days trades chart threads to run.")
 
     subparser.choices['technical-indicators-runner'].add_argument("--helper-text", help="run multiple program processes that parse the TA indicators.")
-    subparser.choices['run-default'].add_argument("--helper-text", help="run multiple program processes with binance aggtrades, "
-                                                       "parse the aggtrades and transform them in a trades chart")
+    subparser.choices['run-default'].add_argument(
+        "--helper-text", help="run multiple program processes with binance aggtrades, "
+                              "parse the aggtrades and transform them in a trades chart")
 
 
 def get_argparse_execute_functions():
@@ -105,7 +103,4 @@ def get_argparse_execute_functions():
                     if function.__name__ == base_execute_module_name:
                         return [(function, parsed_args)] if inspect.getfullargspec(function).args else [(function, None)]
 
-    if parsed_args['command'] == RUN_DEFAULT_ARG:
-        return [(RUN_DEFAULT_ARG, None)]
-    else:
-        return get_exec_func_with_args(parsed_args['command'])
+    return [(RUN_DEFAULT_ARG, None)] if parsed_args['command'] == RUN_DEFAULT_ARG else get_exec_func_with_args(parsed_args['command'])

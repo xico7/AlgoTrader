@@ -20,7 +20,6 @@ async def async_main(func, args):
 # TODO: Fix log debug showing without always and not only with -vv.
 
 def main():
-    # TODO:Uncoment line below
     #TODO: coin ratio can only be found in the present, so its better to parse data near the present, how to make this unforgettable?
 
     run_mongodb_startup_process()

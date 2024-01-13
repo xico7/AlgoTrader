@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from data_handling.data_structures import TradeData, TradesChart
 
-localhost = '172.23.224.1'  #  'mongodb://localhost:27017/'  # Find Ipv4 IP automatically (ps ipconfig.. ipv4)
+localhost = 'mongodb://localhost:27017/'  #  if ubuntu can't connect --> Find Ipv4 IP automatically (ps ipconfig.. ipv4)
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
