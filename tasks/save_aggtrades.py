@@ -1,5 +1,6 @@
 import logging
 import itertools
+import time
 from datetime import datetime
 import requests
 from requests import ReadTimeout

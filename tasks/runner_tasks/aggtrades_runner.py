@@ -8,7 +8,7 @@ from support.threading_helpers import run_algotrader_process
 
 def create_run_aggtrades_threads(threads_number, begin_ts):
     aggtrade_threads = []
-    parse_minutes = 90
+    parse_minutes = 30
 
     for thread_index in range(0, threads_number):
         end_ts = begin_ts + mins_to_ms(parse_minutes)
@@ -29,8 +29,8 @@ def aggtrades_runner(args):
         AggtradesValidatorDB(PARSED_AGGTRADES_DB).set_start_ts(begin_ts)
     else:
         AggtradesValidatorDB(PARSED_AGGTRADES_DB).set_valid_timestamps()
-    aggtrades_threads = create_run_aggtrades_threads(args['threads_number'], begin_ts)
 
+    aggtrades_threads = create_run_aggtrades_threads(args['threads_number'], begin_ts)
     while True:
         if not any([thread.is_alive() for thread in aggtrades_threads]):
             AggtradesValidatorDB(PARSED_AGGTRADES_DB).set_valid_timestamps()

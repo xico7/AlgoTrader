@@ -12,7 +12,7 @@ from data_handling.data_helpers.vars_constants import PRICE, QUANTITY, TS, DEFAU
 from dataclasses import dataclass, asdict, field
 from MongoDB.db_actions import DB, DBCol, ValidatorDB, TradesChartValidatorDB, \
     BASE_TRADES_CHART_DB, OneOrTenSecsMSMultiple
-from support.generic_helpers import round_last_ten_secs
+from support.generic_helpers import round_last_ten_secs, mins_to_ms
 
 
 class InvalidValidatorTimestamps(Exception): pass
@@ -65,41 +65,36 @@ class Aggtrade:
         return args, kwargs
 
 
-# def make_trade_data_group(symbols: list, start_ts: int, end_ts: int, trades_db: str, filled: bool):
-#     trades = {}
-#     for symbol in symbols:
-#         trades[symbol] = list(DBCol(trades_db, symbol).column_between(start_ts, end_ts, ReturnType=TradeData))
-#     trade_data_group = dataclasses.make_dataclass('TradeDataGroup', [(symbol, dict) for symbol in symbols], bases=(
-#         TradeDataGroup,))(start_ts, **trades)#(start_ts, end_ts, filled, **trades )
-#
-#     return trade_data_group.fill_trades_tf(start_ts, end_ts) if filled else trade_data_group
-
 class TradeDataGroup:
-    def __init__(self, start_ts: int, end_ts: int, trades_db: str, filled: bool,
+    def __init__(self, timeframe: int, timestamp: int, trades_db: str, filled: bool,
                  symbols: list, atomicity: int = DEFAULT_PARSE_INTERVAL_SECONDS):
-        self.start_ts = start_ts
-        self.end_ts = end_ts
+        self.timeframe = timeframe
+        self.timestamp = timestamp
         self.symbols_data_group = {}
         self.atomicity = atomicity
 
+        start_ts = self.timestamp - mins_to_ms(self.timeframe)
+        end_ts = self.timestamp + 1
         for symbol in symbols:
             trades = list(DBCol(trades_db, symbol).column_between(start_ts, end_ts, ReturnType=TradeData))
             if filled:
-                filled_trades = {i: TradeData(None, 0, 0, i) for i in range(start_ts, end_ts + 1, DEFAULT_PARSE_INTERVAL_IN_MS)}
+                empty_filled_trades = {i: TradeData(None, 0, 0, i) for i in range(start_ts, end_ts, DEFAULT_PARSE_INTERVAL_IN_MS)}
                 for trade in trades:
-                    filled_trades[trade.timestamp] = trade
-                trades = tuple(v for v in filled_trades.values())
+                    empty_filled_trades[trade.timestamp] = trade
+                trades = tuple(v for v in empty_filled_trades.values())
             else:
                 trades = tuple(v for v in trades)
             self.symbols_data_group[symbol] = TradesChart(**{'trades': trades})
 
-    def add_trades_interval(self, future_trades):
+    def add_trades_interval(self, future_trades, new_timestamp):
         for symbol, symbol_trade_info in self.symbols_data_group.items():
-            self.symbols_data_group[symbol].trades = self.symbols_data_group[symbol].trades[1:] + \
-                                                     tuple([future_trades[symbol][0]])
+            add_trades_value = self.atomicity // DEFAULT_PARSE_INTERVAL_IN_MS
+            self.symbols_data_group[symbol].trades = (
+                    self.symbols_data_group[symbol].trades[add_trades_value:] +
+                    tuple([future_trades[symbol][n] for n in range(0, add_trades_value)]))
             self.symbols_data_group[symbol].refresh_obj_from_trades(self.atomicity)
 
-        self.end_ts += self.atomicity
+        self.timestamp = new_timestamp
 
 
 class CacheTradesChartData(dict):
@@ -110,44 +105,49 @@ class CacheTradesChartData(dict):
         self.timeframe = timeframe
         self._cache_db = {}
 
-    def append_update(self, trade_taindicator_data):
+    def clear_cache(self):
+        symbols = list(self._cache_db[1].symbols_data_group.keys())
+        indiferent_symbol_behavior = symbols[0]
+
+        begin_ts = self._cache_db[1].symbols_data_group[indiferent_symbol_behavior].end_ts
+        end_ts = self._cache_db[len(self._cache_db)].symbols_data_group[indiferent_symbol_behavior].end_ts
+
+        self.db_conn.clear_collections_between(begin_ts, end_ts)
+
+        insert_in_db = {symbol: [] for symbol in symbols}
+        for trade_data_group in self._cache_db.values():
+            for symbol in symbols:
+                insert_in_db[symbol].append(trade_data_group.symbols_data_group[symbol])
+
+        for symbol in symbols:
+            try:
+                getattr(self.db_conn, symbol).insert_many([t.__dict__ for t in insert_in_db[symbol]])
+            except BulkWriteError:
+                LOG.error("Duplicate key while trying to insert data in DB '%s' for symbol '%s' "
+                          "with start ts of '%s' and end ts of '%s'", self.db_conn.db_name, symbol, begin_ts, end_ts)
+                raise
+
+        self.validator_db_conn.add_done_ts_interval(begin_ts, end_ts)
+        self._cache_db = {}
+
+        LOG.info(f"Transformed data starting from {(datetime.fromtimestamp(begin_ts / 1000))} to "
+                 f"{datetime.fromtimestamp(end_ts / 1000)} for db {self.db_conn.db_name}")
+
+    def append_update(self, trade_taindicator_data, timestamp):
         save_trades_temp = {}
         for symbol, taindicator_data in trade_taindicator_data.symbols_data_group.items():
             save_trades_temp[symbol] = taindicator_data.trades
             del taindicator_data.trades
 
+        trade_taindicator_data.timestamp = timestamp
         self._cache_db[len(self._cache_db) + 1] = copy.deepcopy(trade_taindicator_data)
 
         for symbol, taindicator_data in trade_taindicator_data.symbols_data_group.items():
             taindicator_data.trades = save_trades_temp[symbol]
 
         if len(self._cache_db) >= TRADE_DATA_PYTHON_CACHE_SIZE:
-            symbols = list(self._cache_db[1].symbols_data_group.keys())
-            indiferent_symbol_behavior = symbols[0]
+            self.clear_cache()
 
-            begin_ts = self._cache_db[1].symbols_data_group[indiferent_symbol_behavior].end_ts
-            end_ts = self._cache_db[len(self._cache_db)].symbols_data_group[indiferent_symbol_behavior].end_ts
-
-            self.db_conn.clear_collections_between(begin_ts, end_ts)
-
-            insert_in_db = {symbol: [] for symbol in symbols}
-            for trade_data_group in self._cache_db.values():
-                for symbol in symbols:
-                    insert_in_db[symbol].append(trade_data_group.symbols_data_group[symbol])
-
-            for symbol in symbols:
-                try:
-                    getattr(self.db_conn, symbol).insert_many([t.__dict__ for t in insert_in_db[symbol]])
-                except BulkWriteError:
-                    LOG.error("Duplicate key while trying to insert data in DB '%s' for symbol '%s' "
-                              "with start ts of '%s' and end ts of '%s'", self.db_conn.db_name, symbol, begin_ts, end_ts)
-                    raise
-
-            self.validator_db_conn.add_done_ts_interval(begin_ts, end_ts)
-            self._cache_db = {}
-
-            LOG.info(f"Transformed data starting from {(datetime.fromtimestamp(begin_ts / 1000))} to "
-                     f"{datetime.fromtimestamp(end_ts / 1000)} for db {self.db_conn.db_name}")
         return self
 
 
@@ -172,14 +172,6 @@ class TradeData:
             kwargs['ID'] = None
 
         return args, kwargs
-
-    def fill_trades_tf(self, start_ts, end_ts):
-        ts_trades = {i: TradeData(None, 0, 0, i) for i in range(start_ts, end_ts + 1, DEFAULT_PARSE_INTERVAL_IN_MS)}
-        for trade in self.trades:
-            ts_trades[trade.timestamp] = trade
-        self.trades = [v for v in ts_trades.values()][::-1]
-
-        return self
 
 
 @dataclass

@@ -40,7 +40,7 @@ def main():
         if function == RUN_DEFAULT_ARG:
             threading.Thread(target=run_algotrader_process, args=('aggtrades-runner',)).start()
             threading.Thread(target=run_algotrader_process, args=('parse-trades-ten-seconds',)).start()
-            threading.Thread(target=run_algotrader_process, args=('trades-chart-runner',)).start()
+            #threading.Thread(target=run_algotrader_process, args=('trades-chart-runner',)).start()
         elif inspect.iscoroutinefunction(function):
             asyncio.run(async_main(function, args))
         elif args:

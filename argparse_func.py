@@ -6,9 +6,6 @@ import pkgutil
 import logging
 import logs
 import tasks
-from data_handling.data_helpers.vars_constants import ONE_HOUR_CHART_THREADS, TWO_HOURS_CHART_THREADS, \
-    EIGHT_HOURS_CHART_THREADS, FOUR_HOURS_CHART_THREADS, ONE_DAY_CHART_THREADS, TWO_DAYS_CHART_THREADS, \
-    FOUR_DAYS_CHART_THREADS, EIGHT_DAYS_CHART_THREADS
 
 logs.setup_logs(verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, logging.VERBOSE][:4 + 1][-1])
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
@@ -28,34 +25,20 @@ def add_tasks_subparsers(parent_parser, tasks):
     subparser.add_parser(RUN_DEFAULT_ARG)
     subparser.choices['save-aggtrades'].add_argument("--start-ts", type=int, required=True, help="start timestamp to get binance API aggtrades.")
     subparser.choices['save-aggtrades'].add_argument("--end-ts", type=int, required=True, help="end timestamp to get binance API aggtrades.")
-    subparser.choices['transform-trade-data'].add_argument("--chart-minutes", type=int, required=True,
-                                                           help="TODO")
-    subparser.choices['transform-trade-data'].add_argument("--multithread-start-end-timeframe", type=int, nargs=2, required=True,
-                                                           help="Run trade data with given start/end timestamp (timestamp in ms) so it "
-                                                                "can be ran by multiple threads to speed up execution.")
+
+    subparser.choices['transform-trade-data'].add_argument(
+        "--start-end-timeframe", type=int, nargs=2, required=True,
+        help="Run trade data with given start/end timestamp (timestamp in ms) "
+             "so it can be ran by multiple threads to speed up execution.")
 
     subparser.choices['metrics-parser'].add_argument("--metric-db-mapper-name", type=str, help="DB mapper name.")
 
-    subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 4), default=3,
+    subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 4), default=2,
                                                             help="Number of threads to run on binance API, max 3.")
 
     # Trades chart options.
-    subparser.choices['trades-chart-runner'].add_argument("--one-hour-threads-number", type=int, default=ONE_HOUR_CHART_THREADS,
+    subparser.choices['trades-chart-runner'].add_argument("--threads-number", type=int, default=3,
                                                             help="Number of one hour trades chart threads to run.")
-    subparser.choices['trades-chart-runner'].add_argument("--two-hours-threads-number", type=int, default=TWO_HOURS_CHART_THREADS,
-                                                            help="Number of two hours trades chart threads to run.")
-    subparser.choices['trades-chart-runner'].add_argument("--four-hours-threads-number", type=int, default=FOUR_HOURS_CHART_THREADS,
-                                                            help="Number of four hours trades chart threads to run.")
-    subparser.choices['trades-chart-runner'].add_argument("--eight-hours-threads-number", type=int, default=EIGHT_HOURS_CHART_THREADS,
-                                                            help="Number of eight hours trades chart threads to run.")
-    subparser.choices['trades-chart-runner'].add_argument("--one-day-threads-number", type=int, default=ONE_DAY_CHART_THREADS,
-                                                            help="Number of one day trades chart threads to run.")
-    subparser.choices['trades-chart-runner'].add_argument("--two-days-threads-number", type=int, default=TWO_DAYS_CHART_THREADS,
-                                                            help="Number of two days trades chart threads to run.")
-    subparser.choices['trades-chart-runner'].add_argument("--four-days-threads-number", type=int, default=FOUR_DAYS_CHART_THREADS,
-                                                            help="Number of four days trades chart threads to run.")
-    subparser.choices['trades-chart-runner'].add_argument("--eight-days-threads-number", type=int, default=EIGHT_DAYS_CHART_THREADS,
-                                                            help="Number of eight days trades chart threads to run.")
 
     subparser.choices['technical-indicators-runner'].add_argument("--helper-text", help="run multiple program processes that parse the TA indicators.")
     subparser.choices['run-default'].add_argument(

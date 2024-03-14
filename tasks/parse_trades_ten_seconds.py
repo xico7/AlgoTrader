@@ -37,12 +37,9 @@ def coin_ratio_marketcap():
 
 
 def parse_trades_ten_seconds():
-    coin_ratio = coin_ratio_marketcap()
-    aggtrades_stop_and_save_timeframes = 0
-    fund_stop_and_save_timeframe = 0
-
     LOG.info("Beginning to parse ten seconds trades.")
 
+    coin_ratio = coin_ratio_marketcap()
     parse_fund_data = None
     parse_aggtrade = None
     while not parse_fund_data or not parse_aggtrade:
@@ -52,6 +49,9 @@ def parse_trades_ten_seconds():
         except InvalidValidatorTimestamps:
             LOG.info("No valid timestamps provided from 'parsed aggtrades' database, waiting for 10 minutes and trying again")
             time.sleep(600)
+
+    aggtrades_stop_and_save_timeframes = 0
+    fund_stop_and_save_timeframe = 0
 
     while True:
         if fund_stop_and_save_timeframe:
