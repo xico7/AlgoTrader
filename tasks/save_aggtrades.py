@@ -1,15 +1,14 @@
 import logging
 import itertools
-import time
 from datetime import datetime
 import requests
 from requests import ReadTimeout
 
 import logs
-from data_handling.data_helpers.vars_constants import USDT, BNB
-from data_handling.data_structures import CacheAggtrades
+from support.data_handling.data_helpers.vars_constants import USDT, BNB
+from support.data_handling.data_structures import CacheAggtrades
 from binance import Client
-from data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
+from support.data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 90})  # ignore highlight, bugged typing in binance lib.

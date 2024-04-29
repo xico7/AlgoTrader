@@ -10,13 +10,13 @@
 /__pycache__/argparse_func.cpython-38.pyc
 /__pycache__/data_staging.cpython-38.pyc
 /libs_posix/*
-/data_handling/data_helpers/__pycache__/*
+/support/data_handling/data_helpers/__pycache__/*
 /main.py.*
 /tasks/__pycache__/*
 *__pycache__*
 core_startup/__pycache__/*
-data_handling/__pycache__/*
-/data_handling/data_helpers/secrets.py
+support/data_handling/__pycache__/*
+/support/data_handling/data_helpers/secrets.py
 /.idea/AlgoTrader.iml
 /.idea/misc.xml
 /.idea/.gitignore

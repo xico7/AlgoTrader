@@ -10,19 +10,21 @@ import traceback
 from pathlib import Path
 from zipfile import ZipFile
 
+from support.data_handling.data_helpers.vars_constants import PROGRAM_NAME
+
 if os.name == 'nt':
     venv = 'libs_win'
 else:
     venv = 'libs_posix'
 
 if os.environ.get('EXPERIMENT__MAIN_', False):  # For testing __main__.py in the IDE.
-    container = Path("AlgoTrader.py")
+    container = Path(PROGRAM_NAME)
 else:
     container = Path(__file__).parent
 
 
 # Partial dearchiving is necessary for packages with binaries
-with tempfile.TemporaryDirectory(prefix="AlgoTrader") as dearchived_dir:
+with tempfile.TemporaryDirectory(prefix=PROGRAM_NAME) as dearchived_dir:
     dearchived_dir = Path(dearchived_dir)
     print("tmpdir:", dearchived_dir, file=sys.stderr)
 

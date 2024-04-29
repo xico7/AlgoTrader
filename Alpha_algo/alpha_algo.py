@@ -1,13 +1,11 @@
 import types
 from collections import namedtuple
-from enum import Enum
-
 
 import matplotlib.pyplot as plt
 from pymongoarrow.monkey import patch_all
 from matplotlib.axes._subplots import SubplotBase
 from data_handling.data_helpers.data_staging import mins_to_ms
-from data_handling.data_helpers.vars_constants import DEFAULT_COL_SEARCH, ONE_DAY_IN_MS, ONE_DAY_IN_MINUTES, TWO_HOURS_IN_MINUTES
+from support.data_handling.data_helpers.vars_constants import DEFAULT_COL_SEARCH, ONE_DAY_IN_MS, ONE_DAY_IN_MINUTES, TWO_HOURS_IN_MINUTES
 from libs_posix.attr import dataclass
 
 patch_all()
@@ -25,6 +23,9 @@ class TradesChartSixtyMinsRules():
     one_day_minimum_range_percentage = MetricRule("price_range_percentage", 22)
     two_hours_minimum_range_percentage = 1.5
 
+
+
+
 # TODO: Preciso de ver os vários perfis do 'volume rise' principalment eno fund
 
 
@@ -34,7 +35,7 @@ TOO_BIG_UNUSED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']
 def execute_alpha_algo():
     def test_alpha():
         pass
-        #  Use only coins in top 50s day volume.                              Metric DONE
+        #  Use only coins in top 50s day volume.
         #  Volume must be at least 50% more than the average of last months daily.
         #  This is not so simple because my relative volume is not easy.. it is a weigthed rel vol.. i need to see the values it returns and find a good value to put here.
 
@@ -48,8 +49,6 @@ def execute_alpha_algo():
 
 
     def is_fund_data_rising():
-        #  Lowest range percentage considered for fund data to be relevant, i would say 6% in last 24Hours, 1.5% in last 2 Hours.
-        # Nas últimas 24h o end price counter acima dos 90%, nas últimas 4horas 93%, e nas 1hora 95%.
 
         potential_valid_fund_data = []
         append_ts = mins_to_ms(2880)

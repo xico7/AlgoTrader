@@ -3,7 +3,7 @@ import threading
 import time
 import logs
 from MongoDB.db_actions import ValidatorDB, InvalidStartTimestamp, TradesChartValidatorDB, TradesChartTimeframes, InvalidFinishTimestamp
-from data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MS, TEN_SECONDS_IN_MS
+from support.data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MS, TEN_SECONDS_IN_MS
 from support.threading_helpers import run_algotrader_process
 from support.generic_helpers import mins_to_ms
 
@@ -11,9 +11,7 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
 def create_run_timeframe_chart_threads(number_of_threads: int = 3):
-    #TODO: increase parse time when I have more data..
-    #parse_time = int(ONE_DAY_IN_MS * 2)
-    parse_time = int(ONE_DAY_IN_MS / 24.1)
+    parse_time = int(ONE_DAY_IN_MS * 2)
 
     if not ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts:
         LOG.error(f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry.")
@@ -61,7 +59,8 @@ def trades_chart_runner(args):
 
     while True:
         if not any([thread.is_alive() for thread in threads]):
-            run_chart_threads()
+            threads = run_chart_threads()
+            time.sleep(60)
 
-        time.sleep(10)
+        time.sleep(60)
 

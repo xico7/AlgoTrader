@@ -5,9 +5,11 @@ import sys
 from functools import partial
 from pathlib import Path
 
+from support.data_handling.data_helpers.vars_constants import PACKAGED_PROGRAM_NAME
+
 printe = partial(print, file=sys.stderr)
 
-name = 'Algotrader'
+name = PACKAGED_PROGRAM_NAME.split('.py')[0]
 
 if os.name == 'nt':
     raise NotImplementedError("Windows package is not implemented.")

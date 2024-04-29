@@ -7,6 +7,7 @@ import logging
 import logs
 import tasks
 
+
 logs.setup_logs(verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, logging.VERBOSE][:4 + 1][-1])
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
 
@@ -31,14 +32,15 @@ def add_tasks_subparsers(parent_parser, tasks):
         help="Run trade data with given start/end timestamp (timestamp in ms) "
              "so it can be ran by multiple threads to speed up execution.")
 
-    subparser.choices['metrics-parser'].add_argument("--metric-db-mapper-name", type=str, help="DB mapper name.")
+    subparser.choices['metrics-parser'].add_argument("--metric-db-mapper-name", type=str, help="metric from 'DBMapper' to parse.")
 
     subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 4), default=2,
                                                             help="Number of threads to run on binance API, max 3.")
 
     # Trades chart options.
-    subparser.choices['trades-chart-runner'].add_argument("--threads-number", type=int, default=3,
-                                                            help="Number of one hour trades chart threads to run.")
+    subparser.choices['trades-chart-runner'].add_argument(
+        "--threads-number", type=int, default=4,
+        help="Number of trades chart threads to run, each threads needs around 25GB of RAM.")
 
     subparser.choices['technical-indicators-runner'].add_argument("--helper-text", help="run multiple program processes that parse the TA indicators.")
     subparser.choices['run-default'].add_argument(

@@ -4,9 +4,10 @@ import logging
 import threading
 
 from pymongo.errors import ServerSelectionTimeoutError
-from MongoDB.db_actions import localhost, list_dbs
+from MongoDB.db_actions import localhost, list_dbs, DBCol, TradesChartTimeframes
 import logs
 from argparse_func import get_argparse_execute_functions, RUN_DEFAULT_ARG
+from support.data_handling.data_helpers.vars_constants import BASE_TRADES_CHART_DB
 from support.threading_helpers import run_mongodb_startup_process, run_algotrader_process
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
@@ -38,8 +39,8 @@ def main():
 
     for function, args in get_argparse_execute_functions():
         if function == RUN_DEFAULT_ARG:
-            threading.Thread(target=run_algotrader_process, args=('aggtrades-runner',)).start()
             threading.Thread(target=run_algotrader_process, args=('parse-trades-ten-seconds',)).start()
+            threading.Thread(target=run_algotrader_process, args=('aggtrades-runner',)).start()
             #threading.Thread(target=run_algotrader_process, args=('trades-chart-runner',)).start()
         elif inspect.iscoroutinefunction(function):
             asyncio.run(async_main(function, args))

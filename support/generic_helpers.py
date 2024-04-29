@@ -1,6 +1,7 @@
 from datetime import datetime
 import time
-from data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS
+from support.data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS, PROGRAM_NAME
+import inspect
 
 
 def get_current_second_in_ms():
@@ -15,8 +16,12 @@ def mins_to_ms(minutes) -> int:
     return int(minutes * 1000 * 60)
 
 
-def ms_to_mins(milliseconds) -> int:  # Not used but useful sometimes.
-    return int(milliseconds / 1000 / 60)
+def mins_to_seconds(minutes) -> int:
+    return int(minutes * 60)
+
+
+def ms_to_mins(milliseconds) -> float:  # Not used but useful sometimes.
+    return float(milliseconds / 1000 / 60)
 
 
 def get_next_millisecond_modulo(start_timestamp, milliseconds: int):
@@ -44,3 +49,15 @@ def get_key_values_from_dict_with_dicts(parse_obj: dict, key: str):
             transverse_dict = get_key_values_from_dict_with_dicts(v, key)
             if isinstance(transverse_dict, float):
                 return transverse_dict
+
+
+def import_classes_dynamically(name):
+    components = name.split('.')
+    mod = __import__(components[0])
+    for comp in components[1:]:
+        mod = getattr(mod, comp)
+    return mod
+
+
+def get_object_project_relative_path(module_object):
+    return inspect.getfile(module_object).split(PROGRAM_NAME)[1].lstrip('\\').replace('\\', '.').rstrip('.py')

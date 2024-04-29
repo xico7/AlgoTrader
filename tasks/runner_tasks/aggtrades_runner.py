@@ -1,7 +1,7 @@
 import threading
 import time
 from MongoDB.db_actions import DB, AggtradesValidatorDB
-from data_handling.data_helpers.vars_constants import PARSED_AGGTRADES_DB
+from support.data_handling.data_helpers.vars_constants import PARSED_AGGTRADES_DB
 from support.generic_helpers import mins_to_ms
 from support.threading_helpers import run_algotrader_process
 
