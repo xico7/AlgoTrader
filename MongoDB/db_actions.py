@@ -96,6 +96,7 @@ class TechnicalIndicatorDetails:
     metric_class: Type[TechnicalIndicator]
     atomicity_in_minutes: DBData.atomicity_in_minutes
     timeframe_based: bool = False  # As opposed to 'symbol' based.
+    threads_number: int = 1
     db_timeframe_index: DBData.db_timeframe_index = field(init=False)
 
     def __post_init__(self):
@@ -122,15 +123,6 @@ class TradesChartTimeframeValuesAtomicity(Enum):
 TRADES_CHART_TF_ATOMICITY = {trades_chart_tf_atomicity.value.timeframe.value: trades_chart_tf_atomicity.value.atomicity
                              for trades_chart_tf_atomicity in TradesChartTimeframeValuesAtomicity}
 
-# TODO: finish Putting this DBMApper dyunamic
-
-DBMapper2 = Enum(
-    'DBMapper2',
-    {f'{TRADES_CHART_DB}_60_minutes': DBData(_trades_chart_index,
-                                             TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity),
-     f'{TRADES_CHART_DB}_120_minutes': DBData(_trades_chart_index,
-                                              TradesChartTimeframeValuesAtomicity.TWO_HOURS.value.atomicity)})
-
 
 class DBMapper(Enum):
     from tasks.technical_indicators.technical_indicators import RelativeVolume, RiseOfStartEndVolume
@@ -139,10 +131,10 @@ class DBMapper(Enum):
 
     trade_chart_60_minutes_rise_of_start_end_volume = TechnicalIndicatorDetails(
         BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
-        540,
-        180 * 6,
+        300,
+        300 * 6,
         RiseOfStartEndVolume,
-        10
+        5
     )
 
     trade_chart_1440_minutes_rise_of_start_end_volume = TechnicalIndicatorDetails(
@@ -153,63 +145,65 @@ class DBMapper(Enum):
         30
     )
 
-    # relative_volume_60_minutes = TechnicalIndicatorDetails(
-    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
-    #     60 * 30,
-    #     30,
-    #     RelativeVolume,
-    #     5
-    # )
-    #
-    # relative_volume_120_minutes = TechnicalIndicatorDetails(
-    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.TWO_HOURS.value),
-    #     120 * 30,
-    #     30,
-    #     RelativeVolume,
-    #     5
-    # )
-    #
-    # relative_volume_240_minutes = TechnicalIndicatorDetails(
-    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.FOUR_HOURS.value),
-    #     240 * 30,
-    #     30,
-    #     RelativeVolume,
-    #     10
-    # )
-    #
-    # relative_volume_480_minutes = TechnicalIndicatorDetails(
-    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.EIGHT_HOURS.value),
-    #     480 * 30,
-    #     60,
-    #     RelativeVolume,
-    #     15
-    # )
-    #
-    # relative_volume_1440_minutes = TechnicalIndicatorDetails(
-    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
-    #     1440 * 15,
-    #     120,
-    #     RelativeVolume,
-    #     30
-    # )
-    #
-    # total_ta_volume_1440_minutes = TechnicalIndicatorDetails(
-    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
-    #     1440,
-    #     1,
-    #     TotalVolume,
-    #     ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity),
-    #     True
-    # )
-    #
-    # total_ta_volume_60_minutes = TechnicalIndicatorDetails(
-    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
-    #     60,
-    #     1,
-    #     TotalVolume,
-    #     ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity),
-    #     True
-    # )
+    relative_volume_60_minutes = TechnicalIndicatorDetails(
+        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
+        60 * 30,
+        30,
+        RelativeVolume,
+        5
+    )
+
+    relative_volume_120_minutes = TechnicalIndicatorDetails(
+        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.TWO_HOURS.value),
+        120 * 30,
+        30,
+        RelativeVolume,
+        5
+    )
+
+    relative_volume_240_minutes = TechnicalIndicatorDetails(
+        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.FOUR_HOURS.value),
+        240 * 30,
+        30,
+        RelativeVolume,
+        10
+    )
+
+    relative_volume_480_minutes = TechnicalIndicatorDetails(
+        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.EIGHT_HOURS.value),
+        480 * 30,
+        60,
+        RelativeVolume,
+        15
+    )
+
+    relative_volume_1440_minutes = TechnicalIndicatorDetails(
+        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
+        1440 * 15,
+        120,
+        RelativeVolume,
+        30
+    )
+
+    total_ta_volume_1440_minutes = TechnicalIndicatorDetails(
+        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
+        1440,
+        1,
+        TotalVolume,
+        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity),
+        True,
+        2
+    )
+
+    total_ta_volume_60_minutes = TechnicalIndicatorDetails(
+        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
+        60,
+        1,
+        TotalVolume,
+        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity),
+        True,
+        8
+    )
 
     trades_chart_db_60_minutes = DBData(_trades_chart_index,
                                         TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity)
@@ -477,6 +471,46 @@ class ValidatorDB(DB, ABC):
     def add_done_ts_interval(self, start_ts, end_ts):
         self.done_intervals_ts_collection.insert_one({"done_interval": [start_ts, end_ts]})
 
+    def set_timeframe_valid_timestamps(self, atomicity):
+        def get_closest_lower_number(number: int, numbers_to_get_value: List):
+            numbers_to_get_value.sort()
+            for i, number_in_numbers in enumerate(numbers_to_get_value):
+                if number > number_in_numbers:
+                    return numbers_to_get_value[i]
+            return numbers_to_get_value[-1]
+
+        time_intervals_start_ts = []
+        time_intervals_end_ts = []
+
+        start_ts = 0
+        if not (done_intervals := [interval['done_interval'] for interval in list(self.done_intervals_ts_collection.find_all())]):
+            return False
+        else:
+            for value in done_intervals:
+                time_intervals_start_ts.append(value[0])
+                time_intervals_end_ts.append(value[1])
+
+                time_intervals_start_ts.sort()
+                time_intervals_end_ts.sort()
+                start_ts, end_ts = time_intervals_start_ts[0], time_intervals_end_ts[0]
+
+        interval_errors_start_ts = []
+        for interval in done_intervals:
+            if interval[0] - atomicity not in time_intervals_end_ts and interval[0] != start_ts:
+                interval_errors_start_ts.append(interval[0])
+        if interval_errors_start_ts:
+            interval_errors_start_ts.sort()
+            finish_ts = get_closest_lower_number(interval_errors_start_ts[0], time_intervals_end_ts)
+            self.set_finish_ts(finish_ts)
+            LOG.info(f"Missing time interval detected, setting end ts to {datetime.fromtimestamp(finish_ts / 1000)} "
+                     f"for db {self.validate_db_name}. if this happens often please check.")
+        else:
+            self.set_finish_ts(time_intervals_end_ts[-1])
+            LOG.info(f"End_ts ts set to {datetime.fromtimestamp(time_intervals_end_ts[-1] / 1000)} for db {self.validate_db_name}.")
+
+        self.done_intervals_ts_collection.delete_all()
+        return True
+
 
 class AggtradesValidatorDB(ValidatorDB, ABC):
     def set_valid_timestamps(self):
@@ -515,54 +549,12 @@ class TradesChartValidatorDB(ValidatorDB, ABC):
             setattr(self, item, DBCol(self, self.validate_db_name + VALID_END_TS_VALIDATOR_DB_SUFFIX))
             return getattr(self, item)
 
-    def set_timeframe_valid_timestamps(self):
-        def get_closest_lower_number(number: int, numbers_to_get_value: List):
-            numbers_to_get_value.sort()
-            for i, number_in_numbers in enumerate(numbers_to_get_value):
-                if number > number_in_numbers:
-                    return numbers_to_get_value[i]
-            return numbers_to_get_value[-1]
-
-        time_intervals_start_ts = []
-        time_intervals_end_ts = []
-
-        start_ts = 0
-        if not (done_intervals := [interval['done_interval'] for interval in
-                                   list(self.done_intervals_ts_collection.find_all())]):
-            return False
-        else:
-            for value in done_intervals:
-                time_intervals_start_ts.append(value[0])
-                time_intervals_end_ts.append(value[1])
-
-                time_intervals_start_ts.sort()
-                time_intervals_end_ts.sort()
-                start_ts, end_ts = time_intervals_start_ts[0], time_intervals_end_ts[0]
-
-        interval_errors_start_ts = []
-        for interval in done_intervals:
-            if interval[0] - TRADES_CHART_TF_ATOMICITY[self.trades_chart_timeframe] not in time_intervals_end_ts and \
-                    interval[0] != start_ts:
-                interval_errors_start_ts.append(interval[0])
-        if interval_errors_start_ts:
-            interval_errors_start_ts.sort()
-            finish_ts = get_closest_lower_number(interval_errors_start_ts[0], time_intervals_end_ts)
-            self.set_finish_ts(finish_ts)
-            LOG.info(f"Missing time interval detected, setting end ts to {datetime.fromtimestamp(finish_ts / 1000)} "
-                     f"for db {self.validate_db_name}. if this happens often please check.")
-        else:
-            self.set_finish_ts(time_intervals_end_ts[-1])
-            LOG.info(
-                f"End_ts ts set to {datetime.fromtimestamp(time_intervals_end_ts[-1] / 1000)} for db {self.validate_db_name}.")
-
-        self.done_intervals_ts_collection.delete_all()
-        return True
-
     def set_global_timeframes_valid_timestamps(self):
         #TODO: Set start_ts for TradesChartValidatorDB and self..
         for timeframe in TRADES_CHART_TIMEFRAMES_VALUES:
-            TradesChartValidatorDB(timeframe).set_timeframe_valid_timestamps()
-            TradesChartValidatorDB(timeframe).set_start_ts(DBCol(BASE_TRADES_CHART_DB.format(timeframe), DEFAULT_COL_SEARCH).oldest_timeframe())
+            trades_chart_validator_db = TradesChartValidatorDB(timeframe)
+            trades_chart_validator_db.set_timeframe_valid_timestamps(TRADES_CHART_TF_ATOMICITY[trades_chart_validator_db.trades_chart_timeframe])
+            trades_chart_validator_db.set_start_ts(DBCol(BASE_TRADES_CHART_DB.format(timeframe), DEFAULT_COL_SEARCH).oldest_timeframe())
 
         valid_finish_timestamp_values = [ValidatorDB(BASE_TRADES_CHART_DB.format(timeframe)).finish_ts for timeframe in
                                          TRADES_CHART_TIMEFRAMES_VALUES]
@@ -700,8 +692,11 @@ def delete_collection_in_db(db_name, collection_name):
 # pass
 # delete_collection_in_db('ten_seconds_parsed_trades', 'fund_data')
 # print("HERE")
-#delete_dbs_and_timestamp_validator_collections_with_text('relative_vol')
+
+# TEchnical indicators Delete all.
+# delete_dbs_and_timestamp_validator_collections_with_text('relative_vol')
 # delete_dbs_and_timestamp_validator_collections_with_text('minutes_rise_of_start_end_volume')
+# delete_dbs_and_timestamp_validator_collections_with_text('total_volume_ta')
 # delete_dbs_and_timestamp_validator_collections_with_text('total_ta_volume')
 #
 # pass

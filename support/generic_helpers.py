@@ -4,6 +4,9 @@ from support.data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS,
 import inspect
 
 
+class InvalidDictProvided(Exception): pass
+
+
 def get_current_second_in_ms():
     return int(time.time()) * 1000
 
@@ -40,15 +43,25 @@ def date_from_timestamp_in_ms(timestamp_in_ms):
     return datetime.fromtimestamp(timestamp_in_ms / 1000)
 
 
-def get_key_values_from_dict_with_dicts(parse_obj: dict, key: str):
-    for k, v in parse_obj.items():
+# TODO: Improve this function to make it iterate for unlimited 'childs' in dict with dicts.
+def get_dict_key_path_one_child_only(parse_dict: dict, key: str):
+    for k, v in parse_dict.items():
         if k == key:
-            if not isinstance(v, dict):
-                return v
-        elif isinstance(v, dict):
-            transverse_dict = get_key_values_from_dict_with_dicts(v, key)
-            if isinstance(transverse_dict, float):
-                return transverse_dict
+            return k
+    else:
+        for k, v in parse_dict.items():
+            if isinstance(v, dict):
+                for k_2, v_2 in v.items():
+                    if k_2 == key:
+                        return [k, k_2]
+
+    raise InvalidDictProvided("Object doesn't contain key, or it is 'deeper' than this function allows it to be.")
+
+
+def get_value_from_dict_with_path(dict_to_get_value: dict, *args):
+    for i in args:
+        dict_to_get_value = dict_to_get_value[i]
+    return dict_to_get_value
 
 
 def import_classes_dynamically(name):

@@ -21,7 +21,7 @@ async def async_main(func, args):
 # TODO: Fix log debug showing without always and not only with -vv.
 
 def main():
-    #TODO: coin ratio can only be found in the present, so its better to parse data near the present, how to make this unforgettable?
+    # TODO: coin ratio can only be found in the present, so its better to parse data near the present.
 
     run_mongodb_startup_process()
 
@@ -41,7 +41,6 @@ def main():
         if function == RUN_DEFAULT_ARG:
             threading.Thread(target=run_algotrader_process, args=('parse-trades-ten-seconds',)).start()
             threading.Thread(target=run_algotrader_process, args=('aggtrades-runner',)).start()
-            #threading.Thread(target=run_algotrader_process, args=('trades-chart-runner',)).start()
         elif inspect.iscoroutinefunction(function):
             asyncio.run(async_main(function, args))
         elif args:

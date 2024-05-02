@@ -33,9 +33,12 @@ def add_tasks_subparsers(parent_parser, tasks):
              "so it can be ran by multiple threads to speed up execution.")
 
     subparser.choices['metrics-parser'].add_argument("--metric-db-mapper-name", type=str, help="metric from 'DBMapper' to parse.")
+    subparser.choices['metrics-parser'].add_argument("--threads-number", type=int, default=1, help="Number of threads to run")
+    subparser.choices['metrics-parser'].add_argument(
+        "--start-end-timeframe", type=int, nargs=2, help="start and end timestamp to parse the metric, only required if threads greater than one.")
 
     subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 4), default=2,
-                                                            help="Number of threads to run on binance API, max 3.")
+                                                       help="Number of threads to run on binance API, max 3 because of Binance limit.")
 
     # Trades chart options.
     subparser.choices['trades-chart-runner'].add_argument(
