@@ -1,5 +1,4 @@
 import logging
-import time
 from abc import abstractmethod
 from dataclasses import field, dataclass
 from datetime import datetime
@@ -7,8 +6,7 @@ from datetime import datetime
 import logs
 from support.data_handling.data_helpers.vars_constants import TS
 from support.decorators_extenders import init_only_existing
-from support.generic_helpers import mins_to_ms, get_value_from_dict_with_path, seconds_to_ms, ms_to_mins, \
-    get_dict_key_path_one_child_only
+from support.generic_helpers import mins_to_ms, get_value_from_dict_with_path, get_dict_key_path_one_child_only
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 PARSE_AT_A_TIME_RATE = 300
@@ -46,7 +44,7 @@ class TechnicalIndicator:
 
         self.timeframe_based = metric_db_mapper_attributes.timeframe_based
         self.values_needed_for_metric = metric_db_mapper_attributes.values_needed
-        self.atomicity_in_ms = mins_to_ms(metric_db_mapper_attributes.atomicity_in_minutes)
+        self.atomicity_in_ms = metric_db_mapper_attributes.atomicity_in_milliseconds
         self.range_in_ms = mins_to_ms(metric_db_mapper_attributes.range_of_one_value_in_minutes)
         self.metric_validator_db_conn = ValidatorDB(self.metric_db_name)
         self.metric_db_conn = DB(self.metric_db_name)

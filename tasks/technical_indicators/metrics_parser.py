@@ -12,11 +12,10 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
 def metrics_parser(args):
-    metric_db_name = args['metric_db_mapper_name']
+    def instanciate_metric_class(metric_db_name):
+        return getattr(DBMapper, metric_db_name).value.metric_class(metric_db_name)
 
-    metric_ti_class_to_instantiate = getattr(DBMapper, metric_db_name).value.metric_class
-    instantiated_metric_class = metric_ti_class_to_instantiate(metric_db_name)
-
+    instantiated_metric_class = instanciate_metric_class(args['metric_db_mapper_name'])
     if args['threads_number'] == 1:
         instantiated_metric_class.metric_validator_db_conn.set_timeframe_valid_timestamps(instantiated_metric_class.atomicity_in_ms)
         if not args['start_end_timeframe']:
@@ -28,8 +27,9 @@ def metrics_parser(args):
     else:
         def run_metrics_parser_threads():
             instantiated_metric_class.metric_validator_db_conn.set_timeframe_valid_timestamps(instantiated_metric_class.atomicity_in_ms)
+            re_instanciated_metric_class = instanciate_metric_class(args['metric_db_mapper_name'])
             return create_run_metrics_parser_threads(
-                args['threads_number'], int(ONE_DAY_IN_MS / 2), args['metric_db_mapper_name'], instantiated_metric_class.start_ts_plus_range)
+                args['threads_number'], int(ONE_DAY_IN_MS / 12), args['metric_db_mapper_name'], re_instanciated_metric_class.start_ts_plus_range)
 
         LOG.info(f"Starting to parse metric '{args['metric_db_mapper_name']}' with '{args['threads_number']}' number of threads.")
         threads = run_metrics_parser_threads()
@@ -39,7 +39,7 @@ def metrics_parser(args):
                 threads = run_metrics_parser_threads()
                 time.sleep(10)
 
-            time.sleep(60)
+            time.sleep(20)
 
 
 

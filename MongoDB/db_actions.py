@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, Union, Iterator, List, Type
 import pymongo
-from support.generic_helpers import get_current_second_in_ms, mins_to_ms, mins_to_seconds, ms_to_mins
+from support.generic_helpers import get_current_second_in_ms, mins_to_ms, ms_to_mins
 from pymongo import MongoClient, database
 import logs
 from support.data_handling.data_helpers.vars_constants import DBQueryOperators, DEFAULT_COL_SEARCH, \
@@ -85,7 +85,7 @@ _timestamp_index = Index('timestamp', True)
 @dataclass
 class DBData:
     db_timeframe_index: Optional[Index]
-    atomicity_in_minutes: int
+    atomicity_in_milliseconds: int
 
 
 @dataclass
@@ -94,7 +94,7 @@ class TechnicalIndicatorDetails:
     range_of_one_value_in_minutes: int
     values_needed: int
     metric_class: Type[TechnicalIndicator]
-    atomicity_in_minutes: DBData.atomicity_in_minutes
+    atomicity_in_milliseconds: int
     timeframe_based: bool = False  # As opposed to 'symbol' based.
     threads_number: int = 1
     db_timeframe_index: DBData.db_timeframe_index = field(init=False)
@@ -190,7 +190,7 @@ class DBMapper(Enum):
         1440,
         1,
         TotalVolume,
-        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity),
+        TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity,
         True,
         2
     )
@@ -200,7 +200,7 @@ class DBMapper(Enum):
         60,
         1,
         TotalVolume,
-        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity),
+        TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity,
         True,
         8
     )
@@ -241,7 +241,7 @@ class DB(pymongo.database.Database, metaclass=ABCMeta):
 
         if mapped_db := DBMapper.__getitem__(self.db_name).value:
             self.timestamp_doc_key = mapped_db.db_timeframe_index.document if mapped_db.db_timeframe_index else None
-            self.atomicity_in_ms = mapped_db.atomicity_in_minutes
+            self.atomicity_in_ms = mapped_db.atomicity_in_milliseconds
         else:
             self.timestamp_doc_key = None
             self.atomicity_in_ms = None
@@ -313,11 +313,9 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             doc_key = self._timestamp_doc_key
             if not doc_key:
                 LOG.error("Document key needs to be provided as default internal one is not valid.")
-                raise InvalidDocumentKeyProvided(
-                    "Document key needs to be provided as default internal one is not valid.")
+                raise InvalidDocumentKeyProvided("Document key needs to be provided as default internal one is not valid.")
 
-        for res in self.find_timeseries(TimeseriesMinMax(lower_bound, higher_bound)).sort(doc_key,
-                                                                                          sort_value * -1).limit(limit):
+        for res in self.find_timeseries(TimeseriesMinMax(lower_bound, higher_bound)).sort(doc_key, sort_value * -1).limit(limit):
             yield res if not ReturnType else ReturnType(**res)
 
     def most_recent_timeframe(self, document_key=None) -> int:
@@ -395,6 +393,11 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
         elif isinstance(timestamps_to_query, range) or isinstance(timestamps_to_query, List):
             if isinstance(timestamps_to_query, range):
                 timestamps_to_query = [*range(timestamps_to_query.start, timestamps_to_query.stop, timestamps_to_query.step)]
+
+            db_atomicity = getattr(DBMapper, self.db_name).value.atomicity_in_milliseconds
+            if db_atomicity != DEFAULT_PARSE_INTERVAL_IN_MS:
+                for i, ts_to_query in enumerate(timestamps_to_query):
+                    timestamps_to_query[i] = ts_to_query + ts_to_query % db_atomicity
 
             query = {self._timestamp_doc_key: {DBQueryOperators.IN.value: timestamps_to_query}}
             timestamps_count = len(timestamps_to_query)

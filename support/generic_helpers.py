@@ -23,7 +23,7 @@ def mins_to_seconds(minutes) -> int:
     return int(minutes * 60)
 
 
-def ms_to_mins(milliseconds) -> float:  # Not used but useful sometimes.
+def ms_to_mins(milliseconds) -> float:
     return float(milliseconds / 1000 / 60)
 
 
