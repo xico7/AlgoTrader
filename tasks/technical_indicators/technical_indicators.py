@@ -1,12 +1,13 @@
 import logging
+import time
 from abc import abstractmethod
 from dataclasses import field, dataclass
 from datetime import datetime
 
 import logs
-from support.data_handling.data_helpers.vars_constants import TS
+from support.data_handling.data_helpers.vars_constants import TS, DEFAULT_COL_SEARCH
 from support.decorators_extenders import init_only_existing
-from support.generic_helpers import mins_to_ms, get_value_from_dict_with_path, get_dict_key_path_one_child_only
+from support.generic_helpers import mins_to_ms, get_value_from_dict_with_path, get_dict_key_path_one_child_only, ms_to_mins
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 PARSE_AT_A_TIME_RATE = 300
@@ -44,7 +45,7 @@ class TechnicalIndicator:
 
         self.timeframe_based = metric_db_mapper_attributes.timeframe_based
         self.values_needed_for_metric = metric_db_mapper_attributes.values_needed
-        self.atomicity_in_ms = metric_db_mapper_attributes.atomicity_in_milliseconds
+        self.atomicity_in_ms = metric_db_mapper_attributes.atomicity_in_ms
         self.range_in_ms = mins_to_ms(metric_db_mapper_attributes.range_of_one_value_in_minutes)
         self.metric_validator_db_conn = ValidatorDB(self.metric_db_name)
         self.metric_db_conn = DB(self.metric_db_name)
@@ -73,7 +74,24 @@ class TechnicalIndicator:
     def parse_metric(self):
         from MongoDB.db_actions import DBCol
 
-        values_to_parse = [*range(self.start_ts_plus_range, self.end_ts + 1, self.atomicity_in_ms)]
+        def query_timeseries_values(symbol, timestamps):
+            return {v['end_ts']: v for v in DBCol(self.metric_target_db_conn, symbol).find_timeseries(timestamps)}
+
+        def get_timestamps_needed_for_partial_range(partial_range, range_step) -> list:
+            timestamps_needed_for_partial_range = {}
+
+            for value in partial_range:
+                range_set_values = {*list(range(value - self.range_in_ms + range_step, value + 1, range_step))}
+                if not timestamps_needed_for_partial_range:
+                    timestamps_needed_for_partial_range = range_set_values
+                else:
+                    timestamps_needed_for_partial_range.update(range_set_values)
+
+            return [v for v in timestamps_needed_for_partial_range]
+
+        range_step = int(self.range_in_ms / self.values_needed_for_metric)
+        values_to_parse = [*range(self.start_ts_plus_range, self.end_ts + 1,
+                                  (self.atomicity_in_ms if self.atomicity_in_ms < range_step else range_step))]
         range_counter = 0
 
         if not self.metric_validator_db_conn.start_ts:
@@ -85,7 +103,7 @@ class TechnicalIndicator:
                 exit(0)
 
             start_ts, end_ts = partial_range[0], partial_range[-1]
-            self.metric_db_conn.clear_collections_between(start_ts, end_ts)
+            #self.metric_db_conn.clear_collections_between(start_ts, end_ts)
 
             log_message = (f"metric {self.metric_db_conn.db_name} with start date of "
                            f"{datetime.fromtimestamp(start_ts / 1000)} and end date of "
@@ -94,41 +112,35 @@ class TechnicalIndicator:
 
             LOG.info(f"Starting to parse {log_message}")
 
-            timestamps_needed_for_partial_range = {}
-            for value in partial_range:
-                range_set_values = {*list(range(value - self.range_in_ms, value + 1, int(self.range_in_ms / self.values_needed_for_metric)))}
-                if not timestamps_needed_for_partial_range:
-                    timestamps_needed_for_partial_range = range_set_values
-                else:
-                    timestamps_needed_for_partial_range.update(range_set_values)
-
+            timestamps_needed_for_partial_range = get_timestamps_needed_for_partial_range(partial_range, range_step)
             symbols = self.metric_target_db_conn.list_collection_names()
 
             if self.timeframe_based:
                 symbols_metric_values = {}
                 for symbol in symbols:
-                    symbols_metric_values[symbol] = self.metric_logic({v['end_ts']: v for v in DBCol(
-                        self.metric_target_db_conn, symbol).find_timeseries(
-                        [v for v in timestamps_needed_for_partial_range])},
-                        partial_range
-                                                                      )
+                    symbols_metric_values[symbol] = self.metric_logic(query_timeseries_values(symbol, timestamps_needed_for_partial_range))
 
                 symbols_timeframe = []
-                for timeframe in partial_range:
+                for timeframe in symbols_metric_values[DEFAULT_COL_SEARCH].keys():
                     symbols_timeframe.append({TS: timeframe, "metric_values": [{symbol: symbols_metric_values[symbol][timeframe]} for symbol in symbols_metric_values]})
 
                 getattr(self.metric_db_conn, self.metric_db_name).insert_many(symbols_timeframe)
             else:  # Symbol based
-                range_step = int(self.range_in_ms / self.values_needed_for_metric)
                 for symbol in symbols:
-                    timeseries_values = {v['end_ts']: v for v in DBCol(self.metric_target_db_conn, symbol).find_timeseries(
-                        [v for v in timestamps_needed_for_partial_range])}
+                    timeseries_values = query_timeseries_values(symbol, timestamps_needed_for_partial_range)
                     symbol_metric_values = []
+                    for tf in timeseries_values.keys():
+                        #TODO: Improve this line below is not self explanatory.. its working but not easy to understand.
+                        # Only way I found to parse the correct values for all use cases.
+                        if self.atomicity_in_ms < range_step or (tf % self.atomicity_in_ms) == (tf % range_step):
+                            values_buffer = tf - (range_step * self.values_needed_for_metric)
+                            try:
+                                timeseries_values[values_buffer]
+                            except KeyError:
+                                continue
 
-                    for tf in partial_range:
-                        symbol_metric_values.append(
-                            {TS: tf, 'metric_value': self.metric_logic(
-                                timeseries_values, range(tf - self.range_in_ms, tf + 1, range_step))})
+                            partial_timeseries_values = {metric_tf: timeseries_values[metric_tf] for metric_tf in reversed(range(values_buffer + range_step, tf + range_step, range_step))}
+                            symbol_metric_values.append({TS: tf, 'metric_value': self.metric_logic(partial_timeseries_values)})
 
                     getattr(self.metric_db_conn, symbol).insert_many(symbol_metric_values)
 
@@ -139,22 +151,19 @@ class TechnicalIndicator:
 
 @dataclass
 class RelativeVolume(TechnicalIndicator):
-    def metric_logic(self, timeseries_values: dict, range_values: range):
+    def metric_logic(self, timeseries_values: dict):
         def past_relative_volume(tickers_count: int):
             return sum(aggregate_tf_volumes[-tickers_count:]) / len(aggregate_tf_volumes[-tickers_count:])
-        aggregate_tf_volumes = [timeseries_values[tf]['total_volume'] for tf in range_values]
+
+        aggregate_tf_volumes = [timeseries_values[tf]['total_volume'] for tf in timeseries_values.keys()]
         calculated_past_relative_volume = (past_relative_volume(5) + past_relative_volume(15) + past_relative_volume(30)) / 3
         return aggregate_tf_volumes[-1] / calculated_past_relative_volume if calculated_past_relative_volume != 0 else 0
 
 
 @dataclass
 class TotalVolume(TechnicalIndicator):
-    def metric_logic(self, metric_values, timestamps_to_parse):
-        parsed_metric_values = {}
-        for ts in timestamps_to_parse:
-            parsed_metric_values[ts] = metric_values[ts]['total_volume']
-
-        return parsed_metric_values
+    def metric_logic(self, metric_values):
+        return {timestamp: metric_values[timestamp]['total_volume'] for timestamp in metric_values.keys()}
 
 
 class MetricDistribution(TechnicalIndicator):
@@ -166,10 +175,10 @@ class MetricDistribution(TechnicalIndicator):
             LOG.error("'MetricDistribution' needs value 'metric_to_query' to be provided.")
             raise InvalidClassAttributes("'MetricDistribution' needs value 'metric_to_query' to be provided.")
 
-    def metric_logic(self, timeseries_values: dict, range_values):
+    def metric_logic(self, timeseries_values):
         distribution_values = {}
         path_to_metric = get_dict_key_path_one_child_only(timeseries_values[next(iter(timeseries_values))], self.metric_to_query)
-        for tf in range_values:
+        for tf in timeseries_values:
             metric_value = get_value_from_dict_with_path(timeseries_values[tf], *path_to_metric)
             metric_value = str(round(metric_value) if isinstance(metric_value, float) else 0)
             try:

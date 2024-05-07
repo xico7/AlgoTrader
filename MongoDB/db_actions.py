@@ -85,7 +85,7 @@ _timestamp_index = Index('timestamp', True)
 @dataclass
 class DBData:
     db_timeframe_index: Optional[Index]
-    atomicity_in_milliseconds: int
+    atomicity_in_ms: int
 
 
 @dataclass
@@ -94,13 +94,16 @@ class TechnicalIndicatorDetails:
     range_of_one_value_in_minutes: int
     values_needed: int
     metric_class: Type[TechnicalIndicator]
-    atomicity_in_milliseconds: int
+    atomicity_in_minutes: float
     timeframe_based: bool = False  # As opposed to 'symbol' based.
     threads_number: int = 1
+    atomicity_in_ms: int = field(init=False)
     db_timeframe_index: DBData.db_timeframe_index = field(init=False)
 
     def __post_init__(self):
-        if int(mins_to_ms(self.range_of_one_value_in_minutes) / self.values_needed) % 10000 != 0:
+        values_needed_atomicity = int(mins_to_ms(self.range_of_one_value_in_minutes) / self.values_needed)
+        self.atomicity_in_ms = mins_to_ms(self.atomicity_in_minutes)
+        if values_needed_atomicity % 10000 != 0:
             LOG.error("Values needed relationship with range of one value needs to a multiple of ten seconds.")
             raise InvalidValuesNeededProvided("Values needed relationship with range of one value needs to a multiple of ten seconds.")
         self.db_timeframe_index = _timestamp_index
@@ -190,9 +193,9 @@ class DBMapper(Enum):
         1440,
         1,
         TotalVolume,
-        TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity,
+        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity),
         True,
-        2
+        1
     )
 
     total_ta_volume_60_minutes = TechnicalIndicatorDetails(
@@ -200,9 +203,9 @@ class DBMapper(Enum):
         60,
         1,
         TotalVolume,
-        TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity,
+        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity),
         True,
-        8
+        2
     )
 
     trades_chart_db_60_minutes = DBData(_trades_chart_index,
@@ -241,7 +244,7 @@ class DB(pymongo.database.Database, metaclass=ABCMeta):
 
         if mapped_db := DBMapper.__getitem__(self.db_name).value:
             self.timestamp_doc_key = mapped_db.db_timeframe_index.document if mapped_db.db_timeframe_index else None
-            self.atomicity_in_ms = mapped_db.atomicity_in_milliseconds
+            self.atomicity_in_ms = mapped_db.atomicity_in_ms
         else:
             self.timestamp_doc_key = None
             self.atomicity_in_ms = None
@@ -318,15 +321,11 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
         for res in self.find_timeseries(TimeseriesMinMax(lower_bound, higher_bound)).sort(doc_key, sort_value * -1).limit(limit):
             yield res if not ReturnType else ReturnType(**res)
 
-    def most_recent_timeframe(self, document_key=None) -> int:
+    def most_recent_timeframe(self) -> int:
         return self._doc_key_endpoint(True)
 
     def oldest_timeframe(self) -> int:
         return self._doc_key_endpoint(False)
-
-    def all_tf_column(self, column_name):
-        return self.column_between(self.oldest_timeframe(column_name), self.most_recent_timeframe(column_name),
-                                   column_name)
 
     def _doc_key_endpoint(self, most_recent: bool) -> int:
         try:
@@ -342,21 +341,12 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
 
         return max(endpoints) if most_recent else min(endpoints)
 
-    def find_one_column(self, column_name):
-        try:
-            return self.find_one()[column_name]
-        except KeyError:
-            return None
-
     def _init_indexes(self):
         if self._timestamp_doc_key and not self.find_one({}):  # find_one() assumes indexes were correctly initialized on first run.
             self.create_index([(self._timestamp_doc_key, -1)],
                               unique=self._db_map.db_timeframe_index.unique)
 
     def find_all(self):
-        return super().find({})
-
-    def find_all_atomicity(self):
         return super().find({})
 
     def delete_all(self):
@@ -381,20 +371,14 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             LOG.error(err_message)
             raise InvalidDataProvided(err_message)
 
-    def find_timeseries(self, timestamps_to_query: [int, TimeseriesMinMax, range, List]):
-        # TODO: Validate if the timestamps are multiple of ten seconds..
-        if self.database.atomicity_in_ms == 1 and not isinstance(timestamps_to_query, TimeseriesMinMax):
-            LOG.error("For timestamps of atomicity 1 use 'TimeseriesMinMax'.")
-            raise InvalidAtomicityDataType("For timestamps of atomicity 1 use 'TimeseriesMinMax'.")
-        elif isinstance(timestamps_to_query, int):
-            return self.find_timeseries_one(timestamps_to_query)
-        elif isinstance(timestamps_to_query, TimeseriesMinMax):
+    def find_timeseries(self, timestamps_to_query: [TimeseriesMinMax, range, List]):
+        if isinstance(timestamps_to_query, TimeseriesMinMax):
             return self._and_query(timestamps_to_query.range_lower_bound, timestamps_to_query.range_higher_bound)
         elif isinstance(timestamps_to_query, range) or isinstance(timestamps_to_query, List):
             if isinstance(timestamps_to_query, range):
                 timestamps_to_query = [*range(timestamps_to_query.start, timestamps_to_query.stop, timestamps_to_query.step)]
 
-            db_atomicity = getattr(DBMapper, self.db_name).value.atomicity_in_milliseconds
+            db_atomicity = getattr(DBMapper, self.db_name).value.atomicity_in_ms
             if db_atomicity != DEFAULT_PARSE_INTERVAL_IN_MS:
                 for i, ts_to_query in enumerate(timestamps_to_query):
                     timestamps_to_query[i] = ts_to_query + ts_to_query % db_atomicity

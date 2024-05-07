@@ -46,7 +46,7 @@ def transform_trade_data(args):
              f"until {date_from_timestamp_in_ms(finish_ts)}")
 
     # Below line for debug and testing.
-    # TRANSFORM_TRADE_DATA_USED_SYMBOLS = ['BTCUSDT', 'ETHUSDT']
+    TRANSFORM_TRADE_DATA_USED_SYMBOLS = ['BTCUSDT', 'ETHUSDT']
 
     cache_future_trades = create_refresh_cache_future_trades(begin_ts, TRANSFORM_TRADE_DATA_USED_SYMBOLS)
 

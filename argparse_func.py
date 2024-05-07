@@ -42,7 +42,7 @@ def add_tasks_subparsers(parent_parser, tasks):
 
     # Trades chart options.
     subparser.choices['trades-chart-runner'].add_argument(
-        "--threads-number", type=int, default=4,
+        "--threads-number", type=int, default=3,
         help="Number of trades chart threads to run, each threads needs around 25GB of RAM.")
 
     subparser.choices['technical-indicators-runner'].add_argument("--helper-text", help="run multiple program processes that parse the TA indicators.")
