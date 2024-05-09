@@ -1,14 +1,17 @@
 import asyncio
+import datetime
 import inspect
 import logging
 import threading
-
 from pymongo.errors import ServerSelectionTimeoutError
-from MongoDB.db_actions import localhost, list_dbs, DBCol, TradesChartTimeframes
+from MongoDB.db_actions import localhost, list_dbs, mongo_client
 import logs
 from argparse_func import get_argparse_execute_functions, RUN_DEFAULT_ARG
-from support.data_handling.data_helpers.vars_constants import BASE_TRADES_CHART_DB
 from support.threading_helpers import run_mongodb_startup_process, run_algotrader_process
+
+from pymongoarrow.api import Schema
+from pymongoarrow.monkey import patch_all
+patch_all()
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -21,8 +24,12 @@ async def async_main(func, args):
 # TODO: Fix log debug showing without always and not only with -vv.
 
 def main():
-    # TODO: coin ratio can only be found in the present, so its better to parse data near the present.
 
+    # #schema = Schema({'_id': int, 'met': float, 'timestamp': datetime})
+    # df = mongo_client.db.data.find_polars_all({'amount': {'$gt': 0}})
+    # print("HERE")
+    #
+    # TODO: coin ratio can only be found in the present, so its better to parse data near the present.
     run_mongodb_startup_process()
 
     try:

@@ -3,7 +3,6 @@ import itertools
 from datetime import datetime
 import requests
 from requests import ReadTimeout
-
 import logs
 from support.data_handling.data_helpers.vars_constants import USDT, BNB
 from support.data_handling.data_structures import CacheAggtrades
@@ -11,14 +10,17 @@ from binance import Client
 from support.data_handling.data_helpers.secrets import BINANCE_API_KEY, BINANCE_API_SECRET
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
-binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 90})  # ignore highlight, bugged typing in binance lib.
+binance_client = Client(BINANCE_API_KEY, BINANCE_API_SECRET, {"timeout": 90})
+
+
+class InvalidTimestampProvided(Exception): pass
 
 
 def get_next_parse_minutes_trades(symbol, start_ts, end_ts):
     while True:
         try:
             trades = binance_client.get_aggregate_trades(
-                **{'symbol': symbol, 'startTime': start_ts, 'endTime': end_ts, 'limit': 1000})
+                **{'symbol': symbol, 'startTime': start_ts * 1000, 'endTime': end_ts * 1000, 'limit': 1000})
             break
         except ReadTimeout as e:
                 pass
@@ -47,34 +49,17 @@ def usdt_with_bnb_symbols() -> list:
 def save_aggtrades(args):
     start_ts, end_ts = args['start_ts'], args['end_ts']
 
-    LOG.info(f"Starting to parse aggtrades from {datetime.fromtimestamp(start_ts / 1000)} to {datetime.fromtimestamp(end_ts / 1000)}.")
+    if len(str(start_ts)) != 10 and len(str(end_ts)) != 10:
+        LOG.error("Invalid Start timestamp or End timestamp provided, needs to be timestamp in seconds.")
+        raise InvalidTimestampProvided("Invalid Start timestamp or End timestamp provided, needs to be timestamp in seconds.")
+
+    LOG.info(f"Starting to parse aggtrades from {datetime.fromtimestamp(start_ts)} to {datetime.fromtimestamp(end_ts)}.")
     cache_symbols_parsed = CacheAggtrades(start_ts, end_ts)
 
     for symbol in usdt_with_bnb_symbols():
         cache_symbols_parsed.append(symbol, get_next_parse_minutes_trades(symbol, start_ts, end_ts))
     cache_symbols_parsed.insert_in_db_clear()
-    LOG.info(f"{(end_ts - start_ts) / 1000 / 60} minutes of aggtrades inserted from {datetime.fromtimestamp(start_ts / 1000)} to "
+    LOG.info(f"{(end_ts - start_ts) / 60} minutes of aggtrades inserted from {datetime.fromtimestamp(start_ts)} to "
              f"{datetime.fromtimestamp(end_ts / 1000)}, exiting.")
     exit(0)
 
-# import contextlib
-# from binance import AsyncClient, BinanceSocketManager
-# async def execute_ws_trades():
-#     cache_symbols_parsed = CacheAggtrades()
-#
-#     async with BinanceSocketManager(await AsyncClient.create()).multiplex_socket([symbol.lower() + '@aggTrade' for symbol in usdt_with_bnb_symbols()]) as tscm:
-#         while True:
-#             try:
-#                 ws_trade = await tscm.recv()
-#             except Exception:
-#                 with contextlib.suppress(KeyError):
-#                     if ws_trade['m'] == 'Queue overflow. Message not filled':
-#                         raise QueueOverflow("Queue Overflow error while trying to parse websocket trade with data: '%s'.", ws_trade)
-#
-#                 LOG.exception("Error while trying to parse websocket trade with data: '%s'.", ws_trade)
-#                 exit(2)
-#
-#             cache_symbols_parsed.append(ws_trade['data'])
-#             if len(cache_symbols_parsed) > AGGTRADE_PYCACHE:
-#                 cache_symbols_parsed.insert_in_db_clear()
-#class QueueOverflow(Exception): pass

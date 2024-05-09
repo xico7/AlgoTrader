@@ -1,20 +1,23 @@
 from __future__ import annotations
 import logging
-import time
 from abc import ABCMeta, ABC
 from collections import namedtuple
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional, Union, Iterator, List, Type
+from typing import Optional, Union, Iterator, List, Type, Any, Mapping
 import pymongo
-from support.generic_helpers import get_current_second_in_ms, mins_to_ms, ms_to_mins
-from pymongo import MongoClient, database
+from bson import timestamp
+from pymongo.errors import CollectionInvalid
+
+from support.generic_helpers import get_current_second, mins_to_ms, ms_to_mins, datetime_range
+from pymongo import MongoClient, database, cursor
 import logs
 from support.data_handling.data_helpers.vars_constants import DBQueryOperators, DEFAULT_COL_SEARCH, \
-    FINISH_TS_VALIDATOR_DB_SUFFIX, VALIDATOR_DB, FINISH_TS, START_TS, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECONDS_IN_MS, \
+    FINISH_TS_VALIDATOR_DB_SUFFIX, VALIDATOR_DB, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECONDS_IN_MS, \
     ONE_DAY_IN_MINUTES, VALID_END_TS_VALIDATOR_DB_SUFFIX, VALID_END_TS, DONE_INTERVAL_VALIDATOR_DB_SUFFIX, \
-    BASE_TRADES_CHART_DB, DEFAULT_PARSE_INTERVAL_IN_MS, DEFAULT_PARSE_INTERVAL_SECONDS, TRADES_CHART_DB
+    BASE_TRADES_CHART_DB, DEFAULT_PARSE_INTERVAL_IN_MS, DEFAULT_PARSE_INTERVAL_SECONDS, TRADES_CHART_DB, TS, \
+    TEN_SECONDS, DEFAULT_PARSE_INTERVAL_TIMEDELTA, TEN_SECS_PARSED_TRADES_DB
 
 from typing import TYPE_CHECKING
 
@@ -48,16 +51,6 @@ class UnmappedDB(Exception): pass
 TimeseriesMinMax = namedtuple("TimeseriesMinMax", ["range_lower_bound", "range_higher_bound"])
 
 
-@dataclass
-class OneOrTenSecsMSMultiple:
-    seconds_interval: int
-
-    def __post_init__(self):
-        if self.seconds_interval != 1 and self.seconds_interval % DEFAULT_PARSE_INTERVAL_IN_MS != 0:
-            LOG.error(f"Invalid value provided, must be multiple of {DEFAULT_PARSE_INTERVAL_IN_MS}.")
-            raise InvalidInterval(f"Invalid value provided, must be multiple of {DEFAULT_PARSE_INTERVAL_IN_MS}.")
-
-
 class TradesChartTimeframes(Enum):
     ONE_HOUR = 60
     TWO_HOURS = 120
@@ -83,9 +76,18 @@ _timestamp_index = Index('timestamp', True)
 
 
 @dataclass
+class ParsedAggtrades:
+    timeField: timestamp
+    price: float
+    quantity: float
+    bucketMaxSpanSeconds: int
+    bucketRoundingSeconds: int
+
+
+@dataclass
 class DBData:
     db_timeframe_index: Optional[Index]
-    atomicity_in_ms: int
+    atomicity: timedelta
 
 
 @dataclass
@@ -94,16 +96,16 @@ class TechnicalIndicatorDetails:
     range_of_one_value_in_minutes: int
     values_needed: int
     metric_class: Type[TechnicalIndicator]
-    atomicity_in_minutes: float
+    atomicity_in_minutes: int
     timeframe_based: bool = False  # As opposed to 'symbol' based.
     threads_number: int = 1
-    atomicity_in_ms: int = field(init=False)
+    atomicity_in_timedelta: timedelta = field(init=False)
     db_timeframe_index: DBData.db_timeframe_index = field(init=False)
 
     def __post_init__(self):
-        values_needed_atomicity = int(mins_to_ms(self.range_of_one_value_in_minutes) / self.values_needed)
-        self.atomicity_in_ms = mins_to_ms(self.atomicity_in_minutes)
-        if values_needed_atomicity % 10000 != 0:
+        self.atomicity_in_timedelta = timedelta(minutes=self.atomicity_in_minutes)
+        values_needed_atomicity = timedelta(minutes=self.range_of_one_value_in_minutes / self.values_needed)
+        if values_needed_atomicity.seconds % DEFAULT_PARSE_INTERVAL_SECONDS != 0:
             LOG.error("Values needed relationship with range of one value needs to a multiple of ten seconds.")
             raise InvalidValuesNeededProvided("Values needed relationship with range of one value needs to a multiple of ten seconds.")
         self.db_timeframe_index = _timestamp_index
@@ -113,18 +115,70 @@ TradesChartTimeframeAtomicity = namedtuple("TradesChartTimeframeAtomicity", ["ti
 
 
 class TradesChartTimeframeValuesAtomicity(Enum):
-    ONE_HOUR = TradesChartTimeframeAtomicity(TradesChartTimeframes.ONE_HOUR, DEFAULT_PARSE_INTERVAL_IN_MS)
-    TWO_HOURS = TradesChartTimeframeAtomicity(TradesChartTimeframes.TWO_HOURS, DEFAULT_PARSE_INTERVAL_IN_MS)
-    FOUR_HOURS = TradesChartTimeframeAtomicity(TradesChartTimeframes.FOUR_HOURS, DEFAULT_PARSE_INTERVAL_IN_MS)
-    EIGHT_HOURS = TradesChartTimeframeAtomicity(TradesChartTimeframes.EIGHT_HOURS, DEFAULT_PARSE_INTERVAL_IN_MS)
-    ONE_DAY = TradesChartTimeframeAtomicity(TradesChartTimeframes.ONE_DAY, DEFAULT_PARSE_INTERVAL_IN_MS * 2)
-    TWO_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.TWO_DAYS, DEFAULT_PARSE_INTERVAL_IN_MS * 6)
-    FOUR_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.FOUR_DAYS, DEFAULT_PARSE_INTERVAL_IN_MS * 12)
-    EIGHT_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.EIGHT_DAYS, DEFAULT_PARSE_INTERVAL_IN_MS * 48)
+    ONE_HOUR = TradesChartTimeframeAtomicity(TradesChartTimeframes.ONE_HOUR, DEFAULT_PARSE_INTERVAL_TIMEDELTA)
+    TWO_HOURS = TradesChartTimeframeAtomicity(TradesChartTimeframes.TWO_HOURS, DEFAULT_PARSE_INTERVAL_TIMEDELTA)
+    FOUR_HOURS = TradesChartTimeframeAtomicity(TradesChartTimeframes.FOUR_HOURS, DEFAULT_PARSE_INTERVAL_TIMEDELTA)
+    EIGHT_HOURS = TradesChartTimeframeAtomicity(TradesChartTimeframes.EIGHT_HOURS, DEFAULT_PARSE_INTERVAL_TIMEDELTA)
+    ONE_DAY = TradesChartTimeframeAtomicity(TradesChartTimeframes.ONE_DAY, DEFAULT_PARSE_INTERVAL_TIMEDELTA * 2)
+    TWO_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.TWO_DAYS, DEFAULT_PARSE_INTERVAL_TIMEDELTA * 6)
+    FOUR_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.FOUR_DAYS, DEFAULT_PARSE_INTERVAL_TIMEDELTA * 12)
+    EIGHT_DAYS = TradesChartTimeframeAtomicity(TradesChartTimeframes.EIGHT_DAYS, DEFAULT_PARSE_INTERVAL_TIMEDELTA * 48)
 
 
 TRADES_CHART_TF_ATOMICITY = {trades_chart_tf_atomicity.value.timeframe.value: trades_chart_tf_atomicity.value.atomicity
                              for trades_chart_tf_atomicity in TradesChartTimeframeValuesAtomicity}
+
+
+InitDBsNameDataclassName = namedtuple("InitDBsNameDataclassName", ["dataclass_name", "mongodb_name", 'values'])
+
+
+class MapInitDBs(Enum):
+    TIMESTAMPS_VALIDATOR = InitDBsNameDataclassName('ValidatorDB', 'Timestamps_Validator', {'timeField': 'timestamp', 'metaField': "metadata", 'granularity': 'seconds'})
+    PARSED_AGGTRADES = InitDBsNameDataclassName('ParsedAggtrades', 'parsed_aggtrades', {'timeField': 'timestamp', 'metaField': "metadata", 'bucketMaxSpanSeconds': 10, 'bucketRoundingSeconds': 10})
+    TEN_SECONDS_PARSED_TRADES = InitDBsNameDataclassName('Trade', 'ten_seconds_parsed_trades', {'timeField': 'timestamp', 'metaField': "metadata", 'bucketMaxSpanSeconds': 10, 'bucketRoundingSeconds': 10})
+    TRADES_CHART_60_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_60_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity.seconds
+    })
+    TRADES_CHART_120_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_120_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.TWO_HOURS.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.TWO_HOURS.value.atomicity.seconds
+    })
+    TRADES_CHART_240_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_240_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.FOUR_HOURS.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.FOUR_HOURS.value.atomicity.seconds
+    })
+    TRADES_CHART_480_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_480_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.EIGHT_HOURS.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.EIGHT_HOURS.value.atomicity.seconds
+    })
+    TRADES_CHART_1440_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_1440_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity.seconds
+    })
+    TRADES_CHART_2880_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_2880_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.TWO_DAYS.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.TWO_DAYS.value.atomicity.seconds
+    })
+    TRADES_CHART_5760_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_5760_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.FOUR_DAYS.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.FOUR_DAYS.value.atomicity.seconds
+    })
+    TRADES_CHART_11520_MINUTES = InitDBsNameDataclassName('TradesChart', 'trades_chart_db_11520_minutes', {
+        'timeField': 'timestamp', 'metaField': "metadata",
+        'bucketMaxSpanSeconds': TradesChartTimeframeValuesAtomicity.EIGHT_DAYS.value.atomicity.seconds,
+        'bucketRoundingSeconds': TradesChartTimeframeValuesAtomicity.EIGHT_DAYS.value.atomicity.seconds
+    })
+
+
+INIT_DBS_NAME_VALUES = {map_init.value.mongodb_name: map_init.value.values for map_init in MapInitDBs}
 
 
 class DBMapper(Enum):
@@ -132,81 +186,81 @@ class DBMapper(Enum):
 
     Timestamps_Validator = None
 
-    trade_chart_60_minutes_rise_of_start_end_volume = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
-        300,
-        300 * 6,
-        RiseOfStartEndVolume,
-        5
-    )
-
-    trade_chart_1440_minutes_rise_of_start_end_volume = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
-        1440 * 15,
-        2160,
-        RiseOfStartEndVolume,
-        30
-    )
-
-    relative_volume_60_minutes = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
-        60 * 30,
-        30,
-        RelativeVolume,
-        5
-    )
-
-    relative_volume_120_minutes = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.TWO_HOURS.value),
-        120 * 30,
-        30,
-        RelativeVolume,
-        5
-    )
-
-    relative_volume_240_minutes = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.FOUR_HOURS.value),
-        240 * 30,
-        30,
-        RelativeVolume,
-        10
-    )
-
-    relative_volume_480_minutes = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.EIGHT_HOURS.value),
-        480 * 30,
-        60,
-        RelativeVolume,
-        15
-    )
-
-    relative_volume_1440_minutes = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
-        1440 * 15,
-        120,
-        RelativeVolume,
-        30
-    )
-
-    total_ta_volume_1440_minutes = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
-        1440,
-        1,
-        TotalVolume,
-        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity),
-        True,
-        1
-    )
-
-    total_ta_volume_60_minutes = TechnicalIndicatorDetails(
-        BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
-        60,
-        1,
-        TotalVolume,
-        ms_to_mins(TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity),
-        True,
-        2
-    )
+    # trade_chart_60_minutes_rise_of_start_end_volume = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
+    #     300,
+    #     300 * 6,
+    #     RiseOfStartEndVolume,
+    #     5
+    # )
+    #
+    # trade_chart_1440_minutes_rise_of_start_end_volume = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
+    #     1440 * 15,
+    #     2160,
+    #     RiseOfStartEndVolume,
+    #     30
+    # )
+    #
+    # relative_volume_60_minutes = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
+    #     60 * 30,
+    #     30,
+    #     RelativeVolume,
+    #     5
+    # )
+    #
+    # relative_volume_120_minutes = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.TWO_HOURS.value),
+    #     120 * 30,
+    #     30,
+    #     RelativeVolume,
+    #     5
+    # )
+    #
+    # relative_volume_240_minutes = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.FOUR_HOURS.value),
+    #     240 * 30,
+    #     30,
+    #     RelativeVolume,
+    #     10
+    # )
+    #
+    # relative_volume_480_minutes = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.EIGHT_HOURS.value),
+    #     480 * 30,
+    #     60,
+    #     RelativeVolume,
+    #     15
+    # )
+    #
+    # relative_volume_1440_minutes = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
+    #     1440 * 15,
+    #     120,
+    #     RelativeVolume,
+    #     30
+    # )
+    #
+    # total_ta_volume_1440_minutes = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_DAY.value),
+    #     1440,
+    #     1,
+    #     TotalVolume,
+    #     TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity,
+    #     True,
+    #     1
+    # )
+    #
+    # total_ta_volume_60_minutes = TechnicalIndicatorDetails(
+    #     BASE_TRADES_CHART_DB.format(TradesChartTimeframes.ONE_HOUR.value),
+    #     60,
+    #     1,
+    #     TotalVolume,
+    #     TradesChartTimeframeValuesAtomicity.ONE_DAY.value.atomicity,
+    #     True,
+    #     2
+    # )
 
     trades_chart_db_60_minutes = DBData(_trades_chart_index,
                                         TradesChartTimeframeValuesAtomicity.ONE_HOUR.value.atomicity)
@@ -225,8 +279,8 @@ class DBMapper(Enum):
     trades_chart_db_11520_minutes = DBData(_trades_chart_index,
                                            TradesChartTimeframeValuesAtomicity.EIGHT_DAYS.value.atomicity)
     parsed_aggtrades = DBData(Index('timestamp', False), 1)  # one is a valid value, ignore highlight.
-    ten_seconds_parsed_trades = DBData(Index('timestamp', True), DEFAULT_PARSE_INTERVAL_SECONDS)
-    ten_seconds_parsed_trades_Fund_Data = DBData(Index('timestamp', True), DEFAULT_PARSE_INTERVAL_SECONDS)
+    ten_seconds_parsed_trades = DBData(Index('timestamp', True), DEFAULT_PARSE_INTERVAL_TIMEDELTA)
+    ten_seconds_parsed_trades_Fund_Data = DBData(Index('timestamp', True), DEFAULT_PARSE_INTERVAL_TIMEDELTA)
 
 
 class DB(pymongo.database.Database, metaclass=ABCMeta):
@@ -244,13 +298,24 @@ class DB(pymongo.database.Database, metaclass=ABCMeta):
 
         if mapped_db := DBMapper.__getitem__(self.db_name).value:
             self.timestamp_doc_key = mapped_db.db_timeframe_index.document if mapped_db.db_timeframe_index else None
-            self.atomicity_in_ms = mapped_db.atomicity_in_ms
+            self.atomicity_in_ms = mapped_db.atomicity
         else:
             self.timestamp_doc_key = None
             self.atomicity_in_ms = None
 
     def __getattr__(self, collection: str):
         return DBCol(self, collection)
+
+    def list_collection_names(
+        self,
+        session: Optional["ClientSession"] = None,  # pymongo.client_session
+        filter: Optional[Mapping[str, Any]] = None,
+        comment: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> List[str]:  # Can't think of a case where I need system databases.
+        return super().list_collection_names(session=session,
+                                             filter=filter if filter else {"name": {"$regex": r"^((?!system).)*$"}},
+                                             comment=comment, **kwargs)
 
     def clear_higher_than(self, timestamp: int, document_key: str) -> bool:
         for symbol in self.list_collection_names():
@@ -286,14 +351,9 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
                 LOG.error(f"DB {self.db_name} is not mapped in {DBMapper}.")
                 raise UnmappedDB(f"DB {self.db_name} is not mapped in {DBMapper}.")
 
-            self._timestamp_doc_key = None if not self._db_map else self._db_map.db_timeframe_index.document
         else:
             self._db_map = db_instance_or_name._db_map
             self.db_name = db_instance_or_name.db_name
-            if (not self._db_map) or (not self._db_map.db_timeframe_index):
-                self._timestamp_doc_key = None
-            else:
-                self._timestamp_doc_key = self._db_map.db_timeframe_index.document
 
         self._collection = collection
         super().__init__(db_instance_or_name if isinstance(db_instance_or_name, DB) else DB(self.db_name),
@@ -305,46 +365,40 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
         else:
             return super.__getattribute__(item)
 
-    def column_between(self, lower_bound, higher_bound, doc_key=USE_INTERNAL_MAPPED_TIMESTAMP, limit=0,
-                       sort_value=pymongo.DESCENDING,
-                       ReturnType: Union[Optional, TradesChart, TradeData] = None) -> Iterator:
+    def column_between(self, lower_bound: datetime, higher_bound: datetime, ReturnType: Union[Optional, TradesChart, TradeData] = None) -> Iterator:
         if not self.find_one({}):
             LOG.error("Queried Collection '%s' does not exist for db '%s'.", self._collection, self.db_name)
             raise EmptyDBCol(f"Queried Collection '{self._collection}' does not exist for db '{self.db_name}'.")
 
-        if doc_key == self.USE_INTERNAL_MAPPED_TIMESTAMP:
-            doc_key = self._timestamp_doc_key
-            if not doc_key:
-                LOG.error("Document key needs to be provided as default internal one is not valid.")
-                raise InvalidDocumentKeyProvided("Document key needs to be provided as default internal one is not valid.")
-
-        for res in self.find_timeseries(TimeseriesMinMax(lower_bound, higher_bound)).sort(doc_key, sort_value * -1).limit(limit):
+        for res in self.find_timeseries(TimeseriesMinMax(lower_bound, higher_bound)):
             yield res if not ReturnType else ReturnType(**res)
 
-    def most_recent_timeframe(self) -> int:
-        return self._doc_key_endpoint(True)
+    def most_recent_timeframe(self) -> cursor:
+        return self.timeseries_endpoint(True)
 
-    def oldest_timeframe(self) -> int:
-        return self._doc_key_endpoint(False)
+    def oldest_timeframe(self) -> cursor:
+        return self.timeseries_endpoint(False)
 
-    def _doc_key_endpoint(self, most_recent: bool) -> int:
+    def timeseries_endpoint(self, query_most_recent: bool) -> cursor:
         try:
-            endpoints = (next(self.column_between(
-                0, get_current_second_in_ms(), doc_key=self._timestamp_doc_key, limit=1))[self._timestamp_doc_key],
-                         next(self.column_between(
-                             0, get_current_second_in_ms(), doc_key=self._timestamp_doc_key, limit=1, sort_value=1))[self._timestamp_doc_key])
+            most_recent = next(self._and_query(datetime.fromtimestamp(0), datetime.fromtimestamp(get_current_second())).limit(1).sort(TS, pymongo.DESCENDING))[TS]
+            oldest = next(self._and_query(datetime.fromtimestamp(0), datetime.fromtimestamp(get_current_second())).limit(1).sort(TS, pymongo.ASCENDING))[TS]
+
+            return most_recent if query_most_recent else oldest
         except StopIteration as e:
-            LOG.error("Collection '%s' from database '%s' contains no data with key '%s'.", self._collection,
-                      self.db_name, self._timestamp_doc_key)
-            raise InvalidDataProvided(
-                f"Collection '{self._collection}' from database '{self.db_name}' contains no data with key '{self._timestamp_doc_key}'.") from e
+            LOG.error(f"Collection '{self._collection}' from database '{self.db_name}' contains no data.")
+            raise InvalidDataProvided(f"Collection '{self._collection}' from database '{self.db_name}' contains no data.")
 
-        return max(endpoints) if most_recent else min(endpoints)
-
-    def _init_indexes(self):
-        if self._timestamp_doc_key and not self.find_one({}):  # find_one() assumes indexes were correctly initialized on first run.
-            self.create_index([(self._timestamp_doc_key, -1)],
-                              unique=self._db_map.db_timeframe_index.unique)
+    def _init_collection(self):
+        if not self.find_one({}):
+            try:
+                self.database.create_collection(self.name, timeseries=INIT_DBS_NAME_VALUES[self.database.name])
+            except CollectionInvalid as e:
+                if not 'already exists' in e.args[0]:
+                    raise
+            except pymongo.errors.OperationFailure as e:
+                if not 'already exists, but is a view' in e.args[0]:
+                    raise
 
     def find_all(self):
         return super().find({})
@@ -352,13 +406,9 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
     def delete_all(self):
         self.delete_many({})
 
-    def _and_query(self, lower_bound, higher_bound, doc_key=None):
-        if not doc_key and not (doc_key := self._timestamp_doc_key):
-            LOG.error("Internal Document key needs to be provided as default internal one is not valid.")
-            raise InvalidDocumentKeyProvided("Document key needs to be provided as default internal one is not valid.")
-
-        return super().find({DBQueryOperators.AND.value: [{doc_key: {DBQueryOperators.HIGHER_EQ.value: lower_bound}},
-                                                          {doc_key: {DBQueryOperators.LOWER_EQ.value: higher_bound}}]})
+    def _and_query(self, lower_bound, higher_bound):
+        return self.find({DBQueryOperators.AND.value: [{TS: {DBQueryOperators.HIGHER_EQ.value: lower_bound}},
+                                                       {TS: {DBQueryOperators.LOWER_EQ.value: higher_bound}}]})
 
     def find_timeseries_one(self, timestamp_to_query: int):
         try:
@@ -378,7 +428,7 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
             if isinstance(timestamps_to_query, range):
                 timestamps_to_query = [*range(timestamps_to_query.start, timestamps_to_query.stop, timestamps_to_query.step)]
 
-            db_atomicity = getattr(DBMapper, self.db_name).value.atomicity_in_ms
+            db_atomicity = getattr(DBMapper, self.db_name).value.atomicity
             if db_atomicity != DEFAULT_PARSE_INTERVAL_IN_MS:
                 for i, ts_to_query in enumerate(timestamps_to_query):
                     timestamps_to_query[i] = ts_to_query + ts_to_query % db_atomicity
@@ -397,29 +447,19 @@ class DBCol(pymongo.collection.Collection, metaclass=ABCMeta):
         else:
             raise InvalidDataProvided("argument provided has invalid type")
 
-    def find(self, *args, **kwargs):
-        if args[0]:
-            raise NotImplementedError("Find method is not intended to be used in this object, "
-                                      "only to find 'all' or 'any one' document, use 'find_timeseries' instead.")
-        else:
-            return super().find(args[0])  # 'find_all' uses 'find' with null args[0].
-
-    def insert_one(self, data):
-        time.sleep(0.15)  # Multiple connections socket saturation delay.
-        self._init_indexes()
+    def insert_one(self, data, is_timeseries_db=True):
+        if is_timeseries_db:
+            self._init_collection()
         return super().insert_one(data)
 
-    def insert_many(self, data):
-        time.sleep(0.15)  # Multiple connections socket saturation delay.
-        self._init_indexes()
+    def insert_many(self, data, is_timeseries_db=True):
+        if is_timeseries_db:
+            self._init_collection()
         return super().insert_many(data)
 
     def clear_between(self, lower_bound, higher_bound):
-        if not (doc_key := self._timestamp_doc_key):
-            LOG.error("Timestamp document key needs to be provided.")
-            raise InvalidDocumentKeyProvided("Timestamp document key needs to be provided.")
-        self.delete_many({DBQueryOperators.AND.value: [{doc_key: {DBQueryOperators.HIGHER_EQ.value: lower_bound}},
-                                                       {doc_key: {DBQueryOperators.LOWER_EQ.value: higher_bound}}]})
+        self.delete_many({DBQueryOperators.AND.value: [{TS: {DBQueryOperators.HIGHER_EQ.value: lower_bound}},
+                                                       {TS: {DBQueryOperators.LOWER_EQ.value: higher_bound}}]})
 
 
 class ValidatorDB(DB, ABC):
@@ -428,16 +468,15 @@ class ValidatorDB(DB, ABC):
         self.validate_db_name = validate_db_name
         self.finish_ts_col_conn = DBCol(self.db_name, f"{self.validate_db_name + FINISH_TS_VALIDATOR_DB_SUFFIX}")
         self.start_ts_collection = DBCol(self.db_name, f"{self.validate_db_name + START_TS_VALIDATOR_DB_SUFFIX}")
-        self.done_intervals_ts_collection = DBCol(self.db_name,
-                                                  f"{self.validate_db_name + DONE_INTERVAL_VALIDATOR_DB_SUFFIX}")
+        self.done_intervals_ts_collection = DBCol(self.db_name, f"{self.validate_db_name + DONE_INTERVAL_VALIDATOR_DB_SUFFIX}")
 
         super().__init__(self.db_name)
 
         finish_ts_data = self.finish_ts_col_conn.find_one()
         start_ts_data = self.start_ts_collection.find_one()
 
-        self.finish_ts = finish_ts_data[FINISH_TS] if finish_ts_data else None
-        self.start_ts = start_ts_data[START_TS] if start_ts_data else None
+        self.finish_ts = finish_ts_data[TS] if finish_ts_data else None
+        self.start_ts = start_ts_data[TS] if start_ts_data else None
 
     def __getattr__(self, item):
         if item not in dir(self):
@@ -445,18 +484,19 @@ class ValidatorDB(DB, ABC):
             raise InvalidOperationForGivenClass(f"Given class does not contain requested '{item}' attribute.")
 
     def set_finish_ts(self, finish_ts):
-        if not self.finish_ts_col_conn.find_one():  # init validator db end_ts.
-            self.finish_ts_col_conn.insert_one({FINISH_TS: finish_ts})
+        if not self.finish_ts_col_conn.find_one():
+            self.finish_ts_col_conn.insert_one({TS: finish_ts})
 
-        if finish_ts > self.finish_ts_col_conn.find_one({})[FINISH_TS]:
-            self.finish_ts_col_conn.update_one({}, {'$set': {FINISH_TS: finish_ts}})
+        if finish_ts > self.finish_ts_col_conn.find_one({})[TS]:
+            self.finish_ts_col_conn.delete_all()
+            self.finish_ts_col_conn.insert_one({TS: finish_ts})
 
     def set_start_ts(self, start_ts):
         if not self.start_ts_collection.find_one():  # init validator db start_ts.
-            self.start_ts_collection.insert_one({START_TS: start_ts})
+            self.start_ts_collection.insert_one({TS: start_ts})
 
     def add_done_ts_interval(self, start_ts, end_ts):
-        self.done_intervals_ts_collection.insert_one({"done_interval": [start_ts, end_ts]})
+        self.done_intervals_ts_collection.insert_one({"done_interval": [start_ts, end_ts]}, is_timeseries_db=False)
 
     def set_timeframe_valid_timestamps(self, atomicity):
         def get_closest_lower_number(number: int, numbers_to_get_value: List):
@@ -489,11 +529,10 @@ class ValidatorDB(DB, ABC):
             interval_errors_start_ts.sort()
             finish_ts = get_closest_lower_number(interval_errors_start_ts[0], time_intervals_end_ts)
             self.set_finish_ts(finish_ts)
-            LOG.info(f"Missing time interval detected, setting end ts to {datetime.fromtimestamp(finish_ts / 1000)} "
-                     f"for db {self.validate_db_name}. if this happens often please check.")
+            LOG.info(f"Missing time interval detected, setting end ts to {finish_ts} for db {self.validate_db_name}. if this happens often please check.")
         else:
             self.set_finish_ts(time_intervals_end_ts[-1])
-            LOG.info(f"End_ts ts set to {datetime.fromtimestamp(time_intervals_end_ts[-1] / 1000)} for db {self.validate_db_name}.")
+            LOG.info(f"End_ts ts set to {time_intervals_end_ts[-1]} for db {self.validate_db_name}.")
 
         self.done_intervals_ts_collection.delete_all()
         return True
@@ -501,22 +540,22 @@ class ValidatorDB(DB, ABC):
 
 class AggtradesValidatorDB(ValidatorDB, ABC):
     def set_valid_timestamps(self):
-        validate_db_default_col_conn = DBCol(self.validate_db_name, DEFAULT_COL_SEARCH)
-        most_recent_timeframe = validate_db_default_col_conn.most_recent_timeframe()
-        if oldest_tf := validate_db_default_col_conn.oldest_timeframe():
+        validate_db_aggtrades_btcusdt = DBCol(self.validate_db_name, DEFAULT_COL_SEARCH)
+        most_recent_timeframe = validate_db_aggtrades_btcusdt.most_recent_timeframe()
+        if oldest_tf := validate_db_aggtrades_btcusdt.oldest_timeframe():
             parse_from_ts = oldest_tf if not self.finish_ts else self.finish_ts
-            for ts in range(parse_from_ts, most_recent_timeframe, TEN_SECONDS_IN_MS):
+            for ts in datetime_range(parse_from_ts, most_recent_timeframe, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
                 try:
-                    next(validate_db_default_col_conn.column_between(ts, ts + TEN_SECONDS_IN_MS))
+                    next(validate_db_aggtrades_btcusdt.column_between(ts, ts + DEFAULT_PARSE_INTERVAL_TIMEDELTA))
                 except StopIteration:
-                    LOG.warning("There are missing trades after '%s', setting finish time to '%s' "
-                                "and going from there.", ts, datetime.fromtimestamp(ts / 1000))
+                    err_msg = ("There are missing trades after '%s', setting finish time to '%s' and going from there.",
+                               ts, datetime.fromtimestamp(ts / 1000))
+                    LOG.error(err_msg)
                     self.set_finish_ts(ts)
-                    return
+                    raise InvalidFinishTimestamp(err_msg)
             else:
-                LOG.info(
-                    f"End_ts ts set to {datetime.fromtimestamp(most_recent_timeframe / 1000)} for db {self.validate_db_name}.")
                 self.set_finish_ts(most_recent_timeframe)
+                LOG.info(f"End_ts ts set to {most_recent_timeframe} for db {self.validate_db_name}.")
 
 
 class TradesChartValidatorDB(ValidatorDB, ABC):
@@ -537,14 +576,16 @@ class TradesChartValidatorDB(ValidatorDB, ABC):
             return getattr(self, item)
 
     def set_global_timeframes_valid_timestamps(self):
-        #TODO: Set start_ts for TradesChartValidatorDB and self..
         for timeframe in TRADES_CHART_TIMEFRAMES_VALUES:
             trades_chart_validator_db = TradesChartValidatorDB(timeframe)
             trades_chart_validator_db.set_timeframe_valid_timestamps(TRADES_CHART_TF_ATOMICITY[trades_chart_validator_db.trades_chart_timeframe])
-            trades_chart_validator_db.set_start_ts(DBCol(BASE_TRADES_CHART_DB.format(timeframe), DEFAULT_COL_SEARCH).oldest_timeframe())
+            try:
+                start_ts = DBCol(BASE_TRADES_CHART_DB.format(timeframe), DEFAULT_COL_SEARCH).oldest_timeframe()
+            except InvalidDataProvided:
+                start_ts = ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts + timedelta(minutes=max([timeframes.value for timeframes in TradesChartTimeframes]))
+            trades_chart_validator_db.set_start_ts(start_ts)
 
-        valid_finish_timestamp_values = [ValidatorDB(BASE_TRADES_CHART_DB.format(timeframe)).finish_ts for timeframe in
-                                         TRADES_CHART_TIMEFRAMES_VALUES]
+        valid_finish_timestamp_values = [ValidatorDB(BASE_TRADES_CHART_DB.format(timeframe)).finish_ts for timeframe in TRADES_CHART_TIMEFRAMES_VALUES]
         if not valid_finish_timestamp_values[0]:
             LOG.info("First run of trades chart detected, not setting valid timestamps.")
             return True
@@ -553,7 +594,7 @@ class TradesChartValidatorDB(ValidatorDB, ABC):
             self.set_finish_ts(valid_finish_timestamp_values[0])
         else:
             LOG.info("Finish timestamps is not equal for all timeframes, setting value to the lowest between them.")
-            self.set_finish_ts(min(valid_finish_timestamp_values))
+            self.set_finish_ts(datetime.fromtimestamp(min([v.timestamp() for v in valid_finish_timestamp_values if v])))
 
 
 def set_universal_start_end_ts() -> list:
@@ -666,12 +707,15 @@ def delete_dbs_and_timestamp_validator_collections_with_text(text: str):
 
 def delete_collection_in_db(db_name, collection_name):
     DBCol(db_name, collection_name).delete_all()
+
+
 # delete_dbs_and_timestamp_validator_collections_with_text('trades_chart')
 # pass
 
-
+# delete_dbs_and_timestamp_validator_collections_with_text('parsed_aggtrades')
+# pass
 # delete_dbs_and_timestamp_validator_collections_with_text('ten_seconds')
-# delete_dbs_and_timestamp_validator_collections_with_text('fund_data')
+# # delete_dbs_and_timestamp_validator_collections_with_text('fund_data')
 # pass
 
 # delete_dbs_and_timestamp_validator_collections_with_text('fund_data')

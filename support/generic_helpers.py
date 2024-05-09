@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 from support.data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS, PROGRAM_NAME
 import inspect
@@ -7,8 +7,13 @@ import inspect
 class InvalidDictProvided(Exception): pass
 
 
-def get_current_second_in_ms():
-    return int(time.time()) * 1000
+def datetime_range(start: datetime, finish: datetime, step_in_seconds: timedelta):
+    for ts in range(int(start.timestamp()), int(finish.timestamp() + 1), step_in_seconds.seconds):
+        yield datetime.fromtimestamp(ts)
+
+
+def get_current_second():
+    return int(time.time())
 
 
 def seconds_to_ms(seconds) -> int:
@@ -35,8 +40,8 @@ def current_time_in_ms(cur_time_in_secs: float):
     return cur_time_in_secs * 1000
 
 
-def round_last_ten_secs(timestamp):
-    return timestamp - TEN_SECONDS_IN_MS + (TEN_SECONDS_IN_MS - (timestamp % TEN_SECONDS_IN_MS))
+def round_last_ten_secs(timestamp: int) -> datetime:
+    return datetime.fromtimestamp(timestamp - TEN_SECONDS_IN_MS + (TEN_SECONDS_IN_MS - (timestamp % TEN_SECONDS_IN_MS)))
 
 
 def date_from_timestamp_in_ms(timestamp_in_ms):

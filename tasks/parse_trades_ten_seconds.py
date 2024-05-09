@@ -1,6 +1,8 @@
 import logging
 import re
 import time
+from datetime import timedelta
+
 import requests
 import logs
 from support.data_handling.data_structures import SymbolsTimeframeTrade, FundTimeframeTrade
@@ -45,14 +47,14 @@ def parse_trades_ten_seconds():
     parse_fund_data = None
     parse_aggtrade = None
     while True:
-        parse_fund_data = FundTimeframeTrade(coin_ratio) if not parse_fund_data else FundTimeframeTrade(
-            coin_ratio, parse_fund_data.end_ts + mins_to_ms(parse_fund_data.timeframe))
         parse_aggtrade = SymbolsTimeframeTrade() if not parse_aggtrade else SymbolsTimeframeTrade(
-            parse_aggtrade.end_ts + mins_to_ms(parse_aggtrade.timeframe))
+            parse_aggtrade.end_ts + timedelta(minutes=parse_aggtrade.timeframe))
+        parse_fund_data = FundTimeframeTrade(coin_ratio) if not parse_fund_data else FundTimeframeTrade(
+            coin_ratio, parse_fund_data.end_ts + timedelta(minutes=parse_fund_data.timeframe))
 
         if parse_fund_data.finished and parse_aggtrade.finished:
             LOG.info("Finished parsing ten seconds trades, sleeping for ten minutes.")
-            time.sleep(600)
+            time.sleep(60)
 
             parse_fund_data.finished = False
             parse_aggtrade.finished = False

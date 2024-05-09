@@ -3,12 +3,13 @@ from collections import namedtuple
 
 import matplotlib.pyplot as plt
 from pymongoarrow.monkey import patch_all
-from matplotlib.axes._subplots import SubplotBase
-from data_handling.data_helpers.data_staging import mins_to_ms
+patch_all()
+
+# from matplotlib.axes._subplots import SubplotBase
+# from data_handling.data_helpers.data_staging import mins_to_ms
 from support.data_handling.data_helpers.vars_constants import DEFAULT_COL_SEARCH, ONE_DAY_IN_MS, ONE_DAY_IN_MINUTES, TWO_HOURS_IN_MINUTES
 from libs_posix.attr import dataclass
 
-patch_all()
 
 from MongoDB.db_actions import DB, DBCol, BASE_TRADES_CHART_DB, ValidatorDB
 

@@ -24,8 +24,8 @@ def add_tasks_subparsers(parent_parser, tasks):
         subparser.add_parser(task.name.replace("_", "-"))
 
     subparser.add_parser(RUN_DEFAULT_ARG)
-    subparser.choices['save-aggtrades'].add_argument("--start-ts", type=int, required=True, help="start timestamp to get binance API aggtrades.")
-    subparser.choices['save-aggtrades'].add_argument("--end-ts", type=int, required=True, help="end timestamp to get binance API aggtrades.")
+    subparser.choices['save-aggtrades'].add_argument("--start-ts", type=int, required=True, help="start timestamp in seconds to get binance API aggtrades.")
+    subparser.choices['save-aggtrades'].add_argument("--end-ts", type=int, required=True, help="end timestamp in seconds to get binance API aggtrades.")
 
     subparser.choices['transform-trade-data'].add_argument(
         "--start-end-timeframe", type=int, nargs=2, required=True,
@@ -42,13 +42,13 @@ def add_tasks_subparsers(parent_parser, tasks):
 
     # Trades chart options.
     subparser.choices['trades-chart-runner'].add_argument(
-        "--threads-number", type=int, default=3,
+        "--threads-number", type=int, default=4,
         help="Number of trades chart threads to run, each threads needs around 25GB of RAM.")
 
     subparser.choices['technical-indicators-runner'].add_argument("--helper-text", help="run multiple program processes that parse the TA indicators.")
-    subparser.choices['run-default'].add_argument(
-        "--helper-text", help="run multiple program processes with binance aggtrades, "
-                              "parse the aggtrades and transform them in a trades chart")
+    subparser.choices['run-default'].add_argument("--helper-text", help="run multiple program processes with binance "
+                                                                        "aggtrades, parse the aggtrades and transform "
+                                                                        "them in a trades chart")
 
 
 def get_argparse_execute_functions():

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from enum import Enum
 
 PROGRAM_NAME = "AlgoTrader"
@@ -7,6 +8,7 @@ ONE_HOUR_IN_MINUTES = 60
 ONE_HOUR_IN_MS = 60 * 60 * 1000
 ONE_DAY_IN_MS = ONE_HOUR_IN_MS * 24
 DEFAULT_PARSE_INTERVAL_SECONDS = 10
+DEFAULT_PARSE_INTERVAL_TIMEDELTA = timedelta(seconds=DEFAULT_PARSE_INTERVAL_SECONDS)
 DEFAULT_PARSE_INTERVAL_IN_MS = DEFAULT_PARSE_INTERVAL_SECONDS * 1000
 DEFAULT_TEN_SECONDS_PARSE_TIMEFRAME_IN_MINUTES = ONE_HOUR_IN_MINUTES
 DEFAULT_COL_SEARCH = 'BTCUSDT'
@@ -24,8 +26,8 @@ TRADES_CHART_DB = 'trades_chart_db'
 TRADES_CHART_DB_ALL = 'trades_chart_db_all'
 REL_VOLUME_DB_CONTAINING_NAME = 'relative_volume'
 BASE_TRADES_CHART_DB = TRADES_CHART_DB + '_{}_minutes'
-TRADE_DATA_CACHE_TIME_IN_MINUTES = 1440
-TRADE_DATA_PYTHON_CACHE_SIZE = 300
+TRADE_DATA_CACHE_TIME_IN_MINUTES = 160
+TRADE_DATA_PYTHON_CACHE_SIZE = 100
 
 
 DEEMED_UNTRADEABLE_SYMBOLS = ['USDTIDRT', 'USDTTRY', 'BUSDUSDT', 'USDTRUB', 'USDTBRL', 'USTUSDT',
@@ -46,9 +48,7 @@ coingecko_marketcap_api_link = "https://api.coingecko.com/api/v3/coins/markets?v
 SYMBOL = 'symbol'
 MARKETCAP = 'marketcap'
 TS = "timestamp"
-FINISH_TS = "finish_timestamp"
 VALID_END_TS = "valid_end_timestamp"
-START_TS = 'start_timestamp'
 PRICE = "price"
 QUANTITY = 'quantity'
 

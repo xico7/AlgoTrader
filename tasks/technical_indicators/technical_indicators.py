@@ -45,7 +45,7 @@ class TechnicalIndicator:
 
         self.timeframe_based = metric_db_mapper_attributes.timeframe_based
         self.values_needed_for_metric = metric_db_mapper_attributes.values_needed
-        self.atomicity_in_ms = metric_db_mapper_attributes.atomicity_in_ms
+        self.atomicity_in_ms = metric_db_mapper_attributes.atomicity_in_minutes
         self.range_in_ms = mins_to_ms(metric_db_mapper_attributes.range_of_one_value_in_minutes)
         self.metric_validator_db_conn = ValidatorDB(self.metric_db_name)
         self.metric_db_conn = DB(self.metric_db_name)
