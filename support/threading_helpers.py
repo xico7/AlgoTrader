@@ -6,9 +6,7 @@ import time
 from datetime import timedelta, datetime
 
 from MongoDB.db_actions import ValidatorDB, InvalidStartTimestamp, TradesChartTimeframes, InvalidFinishTimestamp
-from support.data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MS, \
-    TEN_SECONDS_IN_MS, ONE_DAY_IN_MINUTES, TEN_SECONDS, DEFAULT_PARSE_INTERVAL_TIMEDELTA
-from support.generic_helpers import mins_to_ms
+from support.data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MINUTES, DEFAULT_PARSE_INTERVAL_TIMEDELTA
 from support.data_handling.data_helpers.vars_constants import PACKAGED_PROGRAM_NAME
 import logging
 import logs

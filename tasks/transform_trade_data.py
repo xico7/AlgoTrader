@@ -1,15 +1,11 @@
 import logging
-import time
 from datetime import timedelta
-
 import logs
 from support.data_handling.data_structures import CacheTradesChartData, TradeDataGroup
 from support.data_handling.data_helpers.vars_constants import TEN_SECS_PARSED_TRADES_DB, \
-    TRADE_DATA_CACHE_TIME_IN_MINUTES, UNUSED_CHART_TRADE_SYMBOLS, DEFAULT_PARSE_INTERVAL_IN_MS, DEFAULT_COL_SEARCH, \
-    DEFAULT_PARSE_INTERVAL_SECONDS, DEFAULT_PARSE_INTERVAL_TIMEDELTA
-from MongoDB.db_actions import (DB, TRADES_CHART_TIMEFRAMES_VALUES, TRADES_CHART_TF_ATOMICITY,
-                                TradesChartTimeframeValuesAtomicity)
-from support.generic_helpers import mins_to_ms, date_from_timestamp_in_ms, round_last_ten_secs
+    TRADE_DATA_CACHE_TIME_IN_MINUTES, UNUSED_CHART_TRADE_SYMBOLS, DEFAULT_COL_SEARCH, DEFAULT_PARSE_INTERVAL_SECONDS, DEFAULT_PARSE_INTERVAL_TIMEDELTA
+from MongoDB.db_actions import DB, TRADES_CHART_TIMEFRAMES_VALUES, TRADES_CHART_TF_ATOMICITY, TradesChartTimeframeValuesAtomicity
+from support.generic_helpers import round_last_ten_secs
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -26,17 +22,11 @@ def success_exit():
 
 
 def create_refresh_cache_future_trades(parsing_ts, symbols_to_parse) -> dict:
-    cached_trades = {}
-    trade_data_group = TradeDataGroup(TRADE_DATA_CACHE_TIME_IN_MINUTES,
-                                      parsing_ts + timedelta(minutes=TRADE_DATA_CACHE_TIME_IN_MINUTES) + timedelta(seconds=DEFAULT_PARSE_INTERVAL_SECONDS),
-                                      TEN_SECS_PARSED_TRADES_DB,
-                                      True,
-                                      symbols_to_parse)
-
-    for symbol, trade_chart_obj in trade_data_group.symbols_data_group.items():
-        cached_trades[symbol] = {trade.timestamp: trade for trade in trade_chart_obj.trades}
-
-    return cached_trades
+    return TradeDataGroup(TRADE_DATA_CACHE_TIME_IN_MINUTES,
+                          parsing_ts + timedelta(minutes=TRADE_DATA_CACHE_TIME_IN_MINUTES) + timedelta(seconds=DEFAULT_PARSE_INTERVAL_SECONDS),
+                          TEN_SECS_PARSED_TRADES_DB,
+                          True,
+                          symbols_to_parse).symbols_data_group
 
 
 def transform_trade_data(args):
@@ -56,7 +46,7 @@ def transform_trade_data(args):
     parsing_ts = begin_ts
     maximum_atomicity_timeframe = max([trade_chart_atomicity.value.atomicity for trade_chart_atomicity in TradesChartTimeframeValuesAtomicity])
     while parsing_ts <= finish_ts:
-        if parsing_ts > list(cache_future_trades[DEFAULT_COL_SEARCH])[-1] - (maximum_atomicity_timeframe + DEFAULT_PARSE_INTERVAL_TIMEDELTA): #TODO: I think this is not ok..
+        if parsing_ts > cache_future_trades[DEFAULT_COL_SEARCH].end_ts - (maximum_atomicity_timeframe + DEFAULT_PARSE_INTERVAL_TIMEDELTA): #TODO: I think this is not ok..
             cache_future_trades = create_refresh_cache_future_trades(parsing_ts - DEFAULT_PARSE_INTERVAL_TIMEDELTA, TRANSFORM_TRADE_DATA_USED_SYMBOLS)
 
         for timeframe in TRADES_CHART_TIMEFRAMES_VALUES:

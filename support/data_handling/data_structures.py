@@ -1,8 +1,12 @@
 import copy
 import logging
-import time
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import Optional
+
+from polars import polars
+from pymongoarrow.api import find_polars_all, find_numpy_all
+from pymongoarrow.schema import Schema
+
 import logs
 from support.decorators_extenders import init_only_existing
 from support.data_handling.data_helpers.vars_constants import (PRICE, QUANTITY, TS, DEFAULT_PARSE_INTERVAL_SECONDS, \
@@ -70,27 +74,24 @@ class TradeDataGroup:
         end_ts = self.timestamp + timedelta(seconds=1)
 
         for symbol in symbols:
-            trades = DBCol(trades_db, symbol).column_between(start_ts, end_ts, ReturnType=TradeData)
-            if filled:
-                empty_filled_trades = {i: TradeData(0, 0, i) for i in datetime_range(start_ts, end_ts, DEFAULT_PARSE_INTERVAL_TIMEDELTA)}
-                for trade in trades:
-                    empty_filled_trades[trade.timestamp] = trade
-                trades = tuple(v for v in empty_filled_trades.values())
+            if symbol != 'fund_data':
+                schema = Schema({"timestamp": datetime, "metadata": {'price': float, 'quantity': float}})
             else:
-                trades = tuple(v for v in trades)
-            if trades:
-                self.symbols_data_group[symbol] = TradesChart(**{'trades': trades})
+                schema = Schema({"timestamp": datetime, "metadata": {'marketcap': float, 'quantity': float}})
+
+            self.symbols_data_group[symbol] = TradesChart(**{
+                'trades': find_polars_all(DBCol(trades_db, symbol), {"timestamp": {"$gt": start_ts, "$lt": end_ts}}, schema=schema),
+                'start_ts': start_ts,
+                'end_ts': end_ts,
+                'atomicity': atomicity
+            })
 
     def parse_trades_interval(self, future_trades, new_timestamp):
         number_of_trades_to_add = self.atomicity.seconds // DEFAULT_PARSE_INTERVAL_SECONDS
 
         for symbol, symbol_trade_info in self.symbols_data_group.items():
-            trades_to_add = tuple(future_trades[symbol][self.timestamp + (n + 1) * DEFAULT_PARSE_INTERVAL_TIMEDELTA] for n in range(0, number_of_trades_to_add))
-            if trades_to_add[0].timestamp != self.symbols_data_group[symbol].trades[-1].timestamp + DEFAULT_PARSE_INTERVAL_TIMEDELTA:
-                LOG.error("Invalid timestamp of trades to be added provided.")
-                raise InvalidTradeTimestamp("Invalid timestamp of trades to be added provided.")
-            self.symbols_data_group[symbol].trades = self.symbols_data_group[symbol].trades[number_of_trades_to_add:] + trades_to_add
-            self.symbols_data_group[symbol].refresh_obj_from_trades(self.atomicity)
+            self.symbols_data_group[symbol].trades = self.symbols_data_group[symbol].trades.extend(future_trades[symbol].trades[0:number_of_trades_to_add])[number_of_trades_to_add:]
+            self.symbols_data_group[symbol].refresh_obj_from_trades()
 
         self.timestamp = new_timestamp
 
@@ -98,7 +99,7 @@ class TradeDataGroup:
         symbols_timeseries = {}
         for symbol in list(self.symbols_data_group.keys()):
             timeseries = {TS: self.symbols_data_group[symbol].end_ts, 'metadata': {
-                t.name: getattr(self.symbols_data_group[symbol], t.name) for t in fields(TradesChart) if t.name != 'trades'}}
+                t.name: getattr(self.symbols_data_group[symbol], t.name) for t in fields(TradesChart) if (t.name != 'trades' and t.name != 'atomicity')}}
             symbols_timeseries[symbol] = timeseries
         return symbols_timeseries
 
@@ -173,7 +174,10 @@ class TradeData:
 
 @dataclass
 class TradesChart:
-    trades: Tuple[TradeData]
+    trades: polars.PyDataFrame
+    start_ts: datetime
+    end_ts: datetime
+    atomicity: timedelta
     start_price: Optional[float] = None
     end_price: Optional[float] = None
     one_percent: Optional[float] = None
@@ -184,32 +188,29 @@ class TradesChart:
     total_volume: Optional[float] = 0
     start_price_counter: Optional[int] = None
     end_price_counter: Optional[int] = None
-    _distinct_trades: Optional[int] = None
     min_price: Optional[float] = None
     max_price: Optional[float] = None
-    start_ts: datetime = field(init=False)
-    end_ts: datetime = field(init=False)
 
     def __post_init__(self):
-        from operator import itemgetter
-        try:
-            self.start_ts = self.trades[0].timestamp
-        except Exception:
-            raise
-        self.end_ts = self.trades[-1].timestamp
+        # 'struct.field' name can be 'price' or 'marketcap'.
+        aggregate_prices = self.trades['metadata'].struct.field(self.trades['metadata'].dtype.fields[0].name).to_numpy()
+        aggregate_prices = aggregate_prices[aggregate_prices != 0]
+        aggregate_quantity = self.trades['metadata'].struct.field("quantity").to_numpy()
+        aggregate_quantity = aggregate_quantity[aggregate_quantity != 0]
 
-        if not (aggregate_prices := [tf.price for tf in self.trades if tf.price]):
-            self._distinct_trades = 0
+        if not len(aggregate_prices):
+            return
+
+        if aggregate_prices.min() == aggregate_prices.max() == 0.0:
             return  # No trades or one trade was done in this timeframe.
-        else:
-            self._distinct_trades = len(set(aggregate_prices))
 
-        self.min_price, self.max_price = min(aggregate_prices), max(aggregate_prices)
-        self.total_volume = sum([trade.quantity * trade.price for trade in self.trades])
-        self.end_price = max([(tf.timestamp, tf.price) for tf in self.trades if tf.price], key=itemgetter(0))[1]
-        self.start_price = min([(tf.timestamp, tf.price) for tf in self.trades if tf.price], key=itemgetter(0))[1]
+        self.min_price, self.max_price = aggregate_prices.min(), aggregate_prices.max()
+        self.total_volume = sum([aggregate_prices[i] * aggregate_quantity[i] for i in range(len(aggregate_prices))])
 
-        if self._distinct_trades == 1:
+        self.end_price = aggregate_prices[-1]
+        self.start_price = aggregate_prices[0]
+
+        if aggregate_prices.min() == aggregate_prices.max():
             return  # Same min and max value, no point calculating range percentages.
 
         self.one_percent = (self.max_price - self.min_price) / 100
@@ -224,18 +225,12 @@ class TradesChart:
             self.range_price_volume = {}
             for i in range(100):
                 self.range_price_volume[str(i + 1)] = {'volume_percentage': 0, 'sum_volume_percentage': 0}
-            total_quantity = sum([tf.quantity for tf in self.trades])
 
-            ratio = 100 / total_quantity
+            ratio = 100 / aggregate_quantity.sum()
 
-            for trade in self.trades:
-                if trade.quantity:
-                    self.range_price_volume[str(self.get_counter_factor_one_hundred(trade.price))]['volume_percentage'] += (trade.quantity * ratio)
-
-            sum_quantity_percentage = 0
-            for range_price in self.range_price_volume.values():
-                sum_quantity_percentage += range_price['volume_percentage']
-                range_price['sum_volume_percentage'] = sum_quantity_percentage
+            for i, quantity in enumerate(aggregate_quantity):
+                if quantity:
+                    self.range_price_volume[str(self.get_counter_factor_one_hundred(aggregate_prices[i]))]['volume_percentage'] += (quantity * ratio)
 
             self.range_price_volume_difference['rise_of_start_end_price_in_percentage'] = (100 - ((self.end_price * 100) / self.start_price)) * -1
             self.range_price_volume_difference['start_price_volume_percentage'] = self.range_price_volume[str(self.start_price_counter)]['sum_volume_percentage']
@@ -256,10 +251,15 @@ class TradesChart:
             self.range_price_min_max[str(i + 1)] = {'max': self.min_price + (self.one_percent * (i + 1)),
                                                     'min': self.min_price + (self.one_percent * i)}
 
-    def refresh_obj_from_trades(self, parse_atomicity: timedelta):
-        self.start_ts += parse_atomicity
-        self.end_ts += parse_atomicity
-        new_obj = TradesChart(**{'trades': self.trades})
+    def refresh_obj_from_trades(self):
+        self.start_ts += self.atomicity
+        self.end_ts += self.atomicity
+        new_obj = TradesChart(
+            **{'trades': self.trades,
+               'start_ts': self.start_ts,
+               'end_ts': self.end_ts,
+               'atomicity': self.atomicity}
+        )
         self.end_price = new_obj.end_price
         self.end_price_counter = new_obj.end_price_counter
         self.max_price = new_obj.max_price
@@ -272,7 +272,6 @@ class TradesChart:
         self.start_price = new_obj.start_price
         self.start_price_counter = new_obj.start_price_counter
         self.total_volume = new_obj.total_volume
-        self._distinct_trades = new_obj._distinct_trades
         return True
 
 
@@ -318,6 +317,7 @@ class Trade:
             for timeseries in datetime_range(timestamp - timedelta(minutes=timeframe), timestamp, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
                 self.ts_data[symbol][str(timeseries)] = {PRICE: 0, QUANTITY: 0, TS: timeseries}
 
+        #aqui tenho de usar o numpy e somar todas as trades pela quantidade..
         for symbol in traded_symbols:
             for trade in symbols_trades[symbol]:
                 if trade.price:

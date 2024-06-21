@@ -47,10 +47,10 @@ def parse_trades_ten_seconds():
     parse_fund_data = None
     parse_aggtrade = None
     while True:
-        parse_aggtrade = SymbolsTimeframeTrade() if not parse_aggtrade else SymbolsTimeframeTrade(
-            parse_aggtrade.end_ts + timedelta(minutes=parse_aggtrade.timeframe))
-        parse_fund_data = FundTimeframeTrade(coin_ratio) if not parse_fund_data else FundTimeframeTrade(
-            coin_ratio, parse_fund_data.end_ts + timedelta(minutes=parse_fund_data.timeframe))
+        parse_aggtrade = SymbolsTimeframeTrade() if not parse_aggtrade else (
+            SymbolsTimeframeTrade(parse_aggtrade.end_ts + timedelta(minutes=parse_aggtrade.timeframe)))
+        parse_fund_data = FundTimeframeTrade(coin_ratio) if not parse_fund_data else (
+            FundTimeframeTrade(coin_ratio, parse_fund_data.end_ts + timedelta(minutes=parse_fund_data.timeframe)))
 
         if parse_fund_data.finished and parse_aggtrade.finished:
             LOG.info("Finished parsing ten seconds trades, sleeping for ten minutes.")

@@ -1,5 +1,7 @@
-pymongo~=4.2.0
-requests~=2.28.1
+numpy~=2.0.0
+pymongo
+requests
 flask
 python-binance
 pymongoarrow
+polars
