@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 
 from MongoDB.db_actions import DB, AggtradesValidatorDB
-from support.data_handling.data_helpers.vars_constants import PARSED_AGGTRADES_DB
+from support.data_handling.data_helpers.vars_constants import PARSED_AGGTRADES_DB, DEFAULT_PARSE_INTERVAL_TIMEDELTA
 from support.threading_helpers import run_algotrader_process
 
 
@@ -15,7 +15,7 @@ def create_run_aggtrades_threads(threads_number, begin_ts):
         end_ts = begin_ts + timedelta(minutes=parse_minutes)
         aggtrade_threads.append(threading.Thread(target=run_algotrader_process, args=(
             'save-aggtrades', ['--start-ts', f'{int(begin_ts.timestamp())}', '--end-ts', f'{int(end_ts.timestamp())}'])))
-        begin_ts += timedelta(minutes=parse_minutes)
+        begin_ts += timedelta(minutes=parse_minutes) + DEFAULT_PARSE_INTERVAL_TIMEDELTA
 
     for thread in aggtrade_threads:
         thread.start()
@@ -37,3 +37,5 @@ def aggtrades_runner(args):
             AggtradesValidatorDB(PARSED_AGGTRADES_DB).set_valid_timestamps()
             aggtrades_threads = create_run_aggtrades_threads(args['threads_number'], DB(PARSED_AGGTRADES_DB).end_ts)
             time.sleep(20)
+
+        time.sleep(20)

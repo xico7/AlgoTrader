@@ -2,18 +2,32 @@ from datetime import datetime, timedelta
 import time
 from support.data_handling.data_helpers.vars_constants import TEN_SECONDS_IN_MS, PROGRAM_NAME
 import inspect
+import logs
+import logging
 
 
 class InvalidDictProvided(Exception): pass
+class WrongTimestampFormat(Exception): pass
 
 
-def datetime_range(start: datetime, finish: datetime, step_in_seconds: timedelta):
-    for ts in range(int(start.timestamp()), int(finish.timestamp() + 1), step_in_seconds.seconds):
+LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
+
+
+def datetime_range(start: datetime, finish: datetime, step: timedelta):
+    for ts in range(int(start.timestamp()), int(finish.timestamp() + 1), step.seconds):
         yield datetime.fromtimestamp(ts)
+
+
+def timedelta_round_following_minute(timedelta_to_get_next_minute):
+    return timedelta_to_get_next_minute + timedelta(seconds=60 - timedelta_to_get_next_minute.second)
 
 
 def get_current_second():
     return int(time.time())
+
+
+def timedelta_to_ms(timedelta: timedelta):
+    return timedelta.seconds * 1000
 
 
 def seconds_to_ms(seconds) -> int:
@@ -40,8 +54,12 @@ def current_time_in_ms(cur_time_in_secs: float):
     return cur_time_in_secs * 1000
 
 
-def round_last_ten_secs(timestamp: int) -> datetime:
-    return datetime.fromtimestamp(timestamp - TEN_SECONDS_IN_MS + (TEN_SECONDS_IN_MS - (timestamp % TEN_SECONDS_IN_MS)))
+# TODO: Make this function parse timestamps in seconds..
+def round_ms_timestamp_last_ten_secs(timestamp: int) -> datetime:
+    if len(str(timestamp)) != 13:
+        LOG.error("Timestamp needs to be in milliseconds (have 13 numbers).")
+        raise WrongTimestampFormat("Timestamp needs to be in milliseconds (have 13 numbers).")
+    return datetime.fromtimestamp(int((timestamp - TEN_SECONDS_IN_MS + (TEN_SECONDS_IN_MS - (timestamp % TEN_SECONDS_IN_MS)))) / 1000)
 
 
 def date_from_timestamp_in_ms(timestamp_in_ms):

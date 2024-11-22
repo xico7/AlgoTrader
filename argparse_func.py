@@ -10,7 +10,8 @@ import tasks
 
 logs.setup_logs(verbosity=[logging.INFO, logging.INFO - 5, logging.DEBUG, logging.VERBOSE][:4 + 1][-1])
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.main')
-
+TRANSFORM_TRADE_DATA_THREAD_NAME = 'transform-trade-data'
+METRICS_PARSER_THREAD_NAME = 'metrics-parser'
 RUN_DEFAULT_ARG = 'run-default'
 
 
@@ -27,17 +28,17 @@ def add_tasks_subparsers(parent_parser, tasks):
     subparser.choices['save-aggtrades'].add_argument("--start-ts", type=int, required=True, help="start timestamp in seconds to get binance API aggtrades.")
     subparser.choices['save-aggtrades'].add_argument("--end-ts", type=int, required=True, help="end timestamp in seconds to get binance API aggtrades.")
 
-    subparser.choices['transform-trade-data'].add_argument(
+    subparser.choices[TRANSFORM_TRADE_DATA_THREAD_NAME].add_argument(
         "--start-end-timeframe", type=int, nargs=2, required=True,
         help="Run trade data with given start/end timestamp (timestamp in ms) "
              "so it can be ran by multiple threads to speed up execution.")
 
-    subparser.choices['metrics-parser'].add_argument("--metric-db-mapper-name", type=str, help="metric from 'DBMapper' to parse.")
-    subparser.choices['metrics-parser'].add_argument("--threads-number", type=int, default=1, help="Number of threads to run")
-    subparser.choices['metrics-parser'].add_argument(
+    subparser.choices[METRICS_PARSER_THREAD_NAME].add_argument("--metric-db-mapper-name", type=str, help="metric from 'DBMapper' to parse.")
+    subparser.choices[METRICS_PARSER_THREAD_NAME].add_argument("--threads-number", type=int, default=1, help="Number of threads to run")
+    subparser.choices[METRICS_PARSER_THREAD_NAME].add_argument(
         "--start-end-timeframe", type=int, nargs=2, help="start and end timestamp to parse the metric, only required if threads greater than one.")
 
-    subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 4), default=2,
+    subparser.choices['aggtrades-runner'].add_argument("--threads-number", type=int, choices=range(1, 3), default=3,
                                                        help="Number of threads to run on binance API, max 3 because of Binance limit.")
 
     # Trades chart options.

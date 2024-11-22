@@ -1,20 +1,26 @@
 import copy
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
-from polars import polars
-from pymongoarrow.api import find_polars_all, find_numpy_all
-from pymongoarrow.schema import Schema
+import polars as pl
+from pymongoarrow.api import find_polars_all
 
 import logs
 from support.decorators_extenders import init_only_existing
 from support.data_handling.data_helpers.vars_constants import (PRICE, QUANTITY, TS, DEFAULT_PARSE_INTERVAL_SECONDS, \
-    UNUSED_CHART_TRADE_SYMBOLS, TEN_SECS_PARSED_TRADES_DB, PARSED_AGGTRADES_DB, MARKETCAP, DEFAULT_TEN_SECONDS_PARSE_TIMEFRAME_IN_MINUTES, \
-    END_TS_AGGTRADES_VALIDATOR_DB, FUND_DATA_COLLECTION, START_TS_AGGTRADES_VALIDATOR_DB, TRADE_DATA_PYTHON_CACHE_SIZE, TEN_SECONDS, DEFAULT_PARSE_INTERVAL_TIMEDELTA)
-from dataclasses import dataclass, field, fields
+                                                               UNUSED_CHART_TRADE_SYMBOLS, TEN_SECS_PARSED_TRADES_DB,
+                                                               PARSED_AGGTRADES_DB, MARKETCAP,
+                                                               DEFAULT_TEN_SECONDS_PARSE_TIMEFRAME_IN_MINUTES, \
+                                                               END_TS_AGGTRADES_VALIDATOR_DB, FUND_DATA_COLLECTION,
+                                                               START_TS_AGGTRADES_VALIDATOR_DB,
+                                                               TRADE_DATA_PYTHON_CACHE_SIZE,
+                                                               DEFAULT_PARSE_INTERVAL_TIMEDELTA, TRADES_DB_SCHEMA,
+                                                               TRADES_DB_MARKETCAP_SCHEMA, METADATA)
+from dataclasses import dataclass, fields
 from MongoDB.db_actions import DB, DBCol, ValidatorDB, TradesChartValidatorDB, \
-    BASE_TRADES_CHART_DB
+    BASE_TRADES_CHART_DB, InvalidDataProvided
 from support.generic_helpers import datetime_range
 
 
@@ -41,16 +47,17 @@ class CacheAggtrades(dict):
     def append(self, symbol, trades):
         self.symbol_parsed_trades[symbol] = [Aggtrade(**trade, **{'asdict': True}).data for trade in trades]
 
-    def insert_in_db_clear(self):
+    def clear_collections(self):
         DB(PARSED_AGGTRADES_DB).clear_collections_between(self.start_datetime, self.end_datetime)
-        for symbol, trades in self.symbol_parsed_trades.items():
-            if trades:
-                DBCol(PARSED_AGGTRADES_DB, symbol).insert_many(trades)
-        ValidatorDB(PARSED_AGGTRADES_DB).add_done_ts_interval(self.start_datetime, self.end_datetime)
 
-        self.symbol_parsed_trades.clear()
+    def insert_in_db_clear(self, symbol):
+        if self.symbol_parsed_trades[symbol]:
+            DBCol(PARSED_AGGTRADES_DB, symbol).insert_many(self.symbol_parsed_trades[symbol])
         return True
 
+    def add_done_and_reset(self):
+        ValidatorDB(PARSED_AGGTRADES_DB).add_done_ts_interval(self.start_datetime, self.end_datetime)
+        self.symbol_parsed_trades.clear()
 
 @init_only_existing
 @dataclass
@@ -63,21 +70,22 @@ class Aggtrade:
 
 
 class TradeDataGroup:
-    def __init__(self, timeframe: int, timestamp: datetime, trades_db: str, filled: bool,
-                 symbols: [set, list], atomicity: timedelta = DEFAULT_PARSE_INTERVAL_TIMEDELTA):
+    def __init__(self,
+                 timeframe: int,
+                 timestamp: datetime,
+                 trades_db: str,
+                 symbols: [set, list],
+                 atomicity: timedelta = DEFAULT_PARSE_INTERVAL_TIMEDELTA):
         self.timeframe = timeframe
         self.timestamp = timestamp
         self.symbols_data_group = {}
         self.atomicity = atomicity
 
         start_ts = self.timestamp - timedelta(minutes=self.timeframe)
-        end_ts = self.timestamp + timedelta(seconds=1)
+        end_ts = self.timestamp
 
         for symbol in symbols:
-            if symbol != 'fund_data':
-                schema = Schema({"timestamp": datetime, "metadata": {'price': float, 'quantity': float}})
-            else:
-                schema = Schema({"timestamp": datetime, "metadata": {'marketcap': float, 'quantity': float}})
+            schema = TRADES_DB_SCHEMA if symbol != 'fund_data' else TRADES_DB_MARKETCAP_SCHEMA
 
             self.symbols_data_group[symbol] = TradesChart(**{
                 'trades': find_polars_all(DBCol(trades_db, symbol), {"timestamp": {"$gt": start_ts, "$lt": end_ts}}, schema=schema),
@@ -131,6 +139,7 @@ class CacheTradesChartData(dict):
         self._cache_db = {}
 
         LOG.info(f"Transformed data starting from {begin_ts} to {end_ts} for db {self.db_conn.db_name}")
+        return True
 
     def append_update_insert_in_db(self, trade_taindicator_data, timestamp):
         save_trades_temp = {}
@@ -174,7 +183,7 @@ class TradeData:
 
 @dataclass
 class TradesChart:
-    trades: polars.PyDataFrame
+    trades: pl.DataFrame
     start_ts: datetime
     end_ts: datetime
     atomicity: timedelta
@@ -194,9 +203,7 @@ class TradesChart:
     def __post_init__(self):
         # 'struct.field' name can be 'price' or 'marketcap'.
         aggregate_prices = self.trades['metadata'].struct.field(self.trades['metadata'].dtype.fields[0].name).to_numpy()
-        aggregate_prices = aggregate_prices[aggregate_prices != 0]
         aggregate_quantity = self.trades['metadata'].struct.field("quantity").to_numpy()
-        aggregate_quantity = aggregate_quantity[aggregate_quantity != 0]
 
         if not len(aggregate_prices):
             return
@@ -205,6 +212,7 @@ class TradesChart:
             return  # No trades or one trade was done in this timeframe.
 
         self.min_price, self.max_price = aggregate_prices.min(), aggregate_prices.max()
+
         self.total_volume = sum([aggregate_prices[i] * aggregate_quantity[i] for i in range(len(aggregate_prices))])
 
         self.end_price = aggregate_prices[-1]
@@ -303,40 +311,53 @@ class Trade:
             self.ts_data[symbol] = {}
 
     def add_trades(self, symbols: list, timeframe: int, timestamp: datetime):
-        trades_data_group = TradeDataGroup(timeframe, timestamp, PARSED_AGGTRADES_DB, False, symbols)
-        untraded_symbols = []
-        symbols_trades = {}
+        def get_last_valid_ts_price(last_valid_timestamp_price):
+            if not last_valid_timestamp_price:
+                try:
+                    ts = DBCol(TEN_SECS_PARSED_TRADES_DB, symbol).most_recent_timeframe()
+                    last_valid_timestamp_price = find_polars_all(
+                        DBCol(TEN_SECS_PARSED_TRADES_DB, symbol),
+                        {TS: ts}, schema=TRADES_DB_SCHEMA)[METADATA][-1][PRICE]
+                except InvalidDataProvided:
+                    last_valid_timestamp_price = 0
+
+            return last_valid_timestamp_price
+
+        start_ts = timestamp
+        end_ts = timestamp + timedelta(minutes=timeframe)
         for symbol in symbols:
-            try:
-                symbols_trades[symbol] = trades_data_group.symbols_data_group[symbol].trades
-            except KeyError:
-                untraded_symbols.append(symbol)
+            last_valid_timestamp_price = 0
+            trades = find_polars_all(DBCol(PARSED_AGGTRADES_DB, symbol), {TS: {"$gt": start_ts, "$lt": end_ts}}, schema=TRADES_DB_SCHEMA)
+            if not len(trades):
+                last_valid_timestamp_price = get_last_valid_ts_price(last_valid_timestamp_price)
+                for timeseries in datetime_range(start_ts, end_ts, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
+                    self.ts_data[symbol][str(timeseries)] = {PRICE: last_valid_timestamp_price, QUANTITY: 0, TS: timeseries}
+                continue
 
-        traded_symbols = [symbol for symbol in symbols if symbol not in untraded_symbols]
-        for symbol in traded_symbols:
-            for timeseries in datetime_range(timestamp - timedelta(minutes=timeframe), timestamp, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
-                self.ts_data[symbol][str(timeseries)] = {PRICE: 0, QUANTITY: 0, TS: timeseries}
+            for timeseries in datetime_range(start_ts, end_ts, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
+                ts_trades = trades.filter((pl.col(TS) > timeseries) & (pl.col(TS) < timeseries + timedelta(seconds=10)))
+                trades_price = ts_trades[METADATA].struct.field(ts_trades[METADATA].dtype.fields[0].name).to_numpy()
+                trades_quantity = ts_trades[METADATA].struct.field(QUANTITY).to_numpy()
 
-        #aqui tenho de usar o numpy e somar todas as trades pela quantidade..
-        for symbol in traded_symbols:
-            for trade in symbols_trades[symbol]:
-                if trade.price:
-                    self.end_price[symbol] = trade.price
-                    if not self.start_price[symbol]:
-                        self.start_price[symbol] = trade.price
+                total = 0
 
-                rounded_last_ten_seconds_timestamp = str(trade.timestamp - timedelta(seconds=(trade.timestamp.second % TEN_SECONDS)))
-                self.ts_data[symbol][rounded_last_ten_seconds_timestamp][PRICE] += \
-                    ((trade.price - self.ts_data[symbol][rounded_last_ten_seconds_timestamp][PRICE]) *
-                     trade.quantity / (self.ts_data[symbol][rounded_last_ten_seconds_timestamp][QUANTITY] + trade.quantity))
-                self.ts_data[symbol][rounded_last_ten_seconds_timestamp][QUANTITY] += trade.quantity
+                for i in range(len(ts_trades)):
+                    total += trades_quantity[i] * trades_price[i]
+                try:
+                    price = total / sum(trades_quantity)
+                    self.ts_data[symbol][str(timeseries)] = {PRICE: price, QUANTITY: total, TS: timeseries}
+                    last_valid_timestamp_price = price
+                except ZeroDivisionError:
+                    if not last_valid_timestamp_price:
+                        last_valid_timestamp_price = get_last_valid_ts_price(last_valid_timestamp_price)
+                    self.ts_data[symbol][str(timeseries)] = {PRICE: last_valid_timestamp_price, QUANTITY: 0, TS: timeseries}
 
         return self
 
 
 class SymbolsTimeframeTrade(Trade):
     def __init__(self, timestamp: int = None):
-        if not (symbols := [elem for elem in DB(TEN_SECS_PARSED_TRADES_DB).list_collection_names() if elem != 'fund_data']):
+        if not (symbols := [elem for elem in DB(TEN_SECS_PARSED_TRADES_DB).list_collection_names() if elem != FUND_DATA_COLLECTION]):
             symbols = set(DB(PARSED_AGGTRADES_DB).list_collection_names()) - set(UNUSED_CHART_TRADE_SYMBOLS)
         super().__init__(symbols)
 
@@ -347,8 +368,8 @@ class SymbolsTimeframeTrade(Trade):
         else:
             self.timestamp = ValidatorDB(PARSED_AGGTRADES_DB).start_ts + timedelta(minutes=self.timeframe)
 
-        self.start_ts = self.timestamp - timedelta(minutes=self.timeframe)
-        self.end_ts = self.timestamp
+        self.start_ts = self.timestamp
+        self.end_ts = self.timestamp + timedelta(minutes=self.timeframe)
 
         if self.timestamp > self._finish_run_ts:
             self.finished = True
@@ -390,8 +411,8 @@ class FundTimeframeTrade(Trade):
         else:
             self.timestamp = ValidatorDB(PARSED_AGGTRADES_DB).start_ts + timedelta(minutes=self.timeframe)
 
-        self.start_ts = self.timestamp - timedelta(minutes=self.timeframe)
-        self.end_ts = self.timestamp
+        self.start_ts = self.timestamp
+        self.end_ts = self.timestamp + timedelta(minutes=self.timeframe)
 
         self.ratios = ratio
         self.tf_marketcap_quantity = []

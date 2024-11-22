@@ -53,7 +53,7 @@ def execute_alpha_algo():
 
         potential_valid_fund_data = []
         append_ts = mins_to_ms(2880)
-        symbol = "fund_data"
+        symbol = FUND_DATA_COLLECTION
         MapChartDBToMS = namedtuple("MapChartDBToMS", ["db_name", "db_timeframe_in_milliseconds"])
 
         def get_chart_db_ms(timeframe_in_minutes: int):
@@ -156,8 +156,8 @@ def execute_alpha_algo():
 
 
     standard_plot(1440, axis[0, 0], symbol)
-    standard_plot(1440, axis[1, 0], 'fund_data')
-    standard_plot(480, axis[0, 1], 'fund_data')
+    standard_plot(1440, axis[1, 0], FUND_DATA_COLLECTION)
+    standard_plot(480, axis[0, 1], FUND_DATA_COLLECTION)
 
     plt.show()
 

@@ -2,55 +2,65 @@ import logging
 import time
 from abc import abstractmethod
 from dataclasses import field, dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Type
+
+import polars
+from pymongoarrow.api import find_polars_all
 
 import logs
-from support.data_handling.data_helpers.vars_constants import TS, DEFAULT_COL_SEARCH
+
+from support.data_handling.data_helpers.vars_constants import TS, DEFAULT_COL_SEARCH, DEFAULT_PARSE_INTERVAL_SECONDS, \
+    TRADES_DB_SCHEMA, DBQueryOperators
 from support.decorators_extenders import init_only_existing
-from support.generic_helpers import mins_to_ms, get_value_from_dict_with_path, get_dict_key_path_one_child_only, ms_to_mins
+from support.generic_helpers import get_value_from_dict_with_path, get_dict_key_path_one_child_only, datetime_range, \
+    timedelta_round_following_minute
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 PARSE_AT_A_TIME_RATE = 300
 
 
+class InvalidValuesNeededProvided(Exception): pass
 class UninitializedTradesChart(Exception): pass
 class NoTradesToParse(Exception): pass
 class InvalidParameterType(Exception): pass
 class InvalidClassAttributes(Exception): pass
 
 
+@dataclass
+class TechnicalIndicatorDetails:
+    metric_db_name: str
+    metric_target_db_name: str
+    range: timedelta
+    values_needed: int
+    metric_class: Type['TechnicalIndicator']
+    atomicity: timedelta
+    timeframe_based: bool = False  # As opposed to 'symbol' based.
+    threads_number: int = 1
+
+    def __post_init__(self):
+        if (self.range / self.values_needed).seconds % DEFAULT_PARSE_INTERVAL_SECONDS != 0:
+            LOG.error("Values needed relationship with range of one value needs to a multiple of ten seconds.")
+            raise InvalidValuesNeededProvided("Values needed relationship with range of one value needs to a multiple of ten seconds.")
+
+
 @init_only_existing
 @dataclass
-class TechnicalIndicator:
-    metric_db_name: str
-    metric_name: str = field(init=False)
-    atomicity: int = field(init=False)
-    range: int = field(init=False)
-    range_granularity: int = field(init=False)
-    start_ts_plus_range: int = field(init=False)
-    end_ts: int = field(init=False)
+class TechnicalIndicator(TechnicalIndicatorDetails):
+    start_ts_plus_range: datetime = field(init=False)
+    end_ts: datetime = field(init=False)
     metric_target_db_conn: 'DB' = field(init=False)
     metric_db_conn: 'DB' = field(init=False)
     timeframe_based: bool = field(init=False)
     metric_validator_db_conn: 'ValidatorDB' = field(init=False)
 
     def __post_init__(self):
-        from MongoDB.db_actions import ValidatorDB, DB, TechnicalIndicatorDetails
-        from MongoDB.db_actions import DBMapper
+        from MongoDB.db_actions import ValidatorDB, DB
 
-        metric_db_mapper_attributes = getattr(DBMapper, self.metric_db_name).value
-
-        if not isinstance(metric_db_mapper_attributes, TechnicalIndicatorDetails):
-            raise InvalidParameterType(f"parameter {metric_db_mapper_attributes.value} should be of type {type(TechnicalIndicatorDetails)}")
-
-        self.timeframe_based = metric_db_mapper_attributes.timeframe_based
-        self.values_needed_for_metric = metric_db_mapper_attributes.values_needed
-        self.atomicity_in_ms = metric_db_mapper_attributes.atomicity_in_minutes
-        self.range_in_ms = mins_to_ms(metric_db_mapper_attributes.range_of_one_value_in_minutes)
         self.metric_validator_db_conn = ValidatorDB(self.metric_db_name)
         self.metric_db_conn = DB(self.metric_db_name)
-        self.metric_target_db_conn = DB(metric_db_mapper_attributes.metric_target_db_name)
-        self.end_ts = ValidatorDB(self.metric_target_db_conn.db_name).finish_ts
+        self.metric_target_db_conn = DB(self.metric_target_db_name)
+        self.end_ts = ValidatorDB(self.metric_target_db_name).finish_ts
 
         if not self.end_ts:  # TradesChartValidatorDB start_ts is initialized when end_ts is, only need to check one.
             LOG.error("This indicator depends on valid start and end timestamp from trades chart DB.")
@@ -59,11 +69,11 @@ class TechnicalIndicator:
         if ValidatorDB(self.metric_db_name).finish_ts:
             self.start_ts_plus_range = ValidatorDB(self.metric_db_name).finish_ts
         else:
-            self.start_ts_plus_range = ValidatorDB(self.metric_target_db_conn.db_name).start_ts + self.range_in_ms
+            self.start_ts_plus_range = timedelta_round_following_minute(ValidatorDB(self.metric_target_db_conn.db_name).start_ts + self.range)
 
         if self.end_ts < self.start_ts_plus_range:
             error_msg = (f"End timestamp attribute is before start timestamp attribute, this means there are no trades "
-                         f"left to parse for metric with DB name '{self.metric_db_name}' in DB {metric_db_mapper_attributes.metric_target_db_name}.")
+                         f"left to parse for metric with DB name '{self.metric_db_name}' in DB {self.metric_db_name}.")
             LOG.error(error_msg)
             raise NoTradesToParse(error_msg)
 
@@ -75,23 +85,25 @@ class TechnicalIndicator:
         from MongoDB.db_actions import DBCol
 
         def query_timeseries_values(symbol, timestamps):
-            return {v['end_ts']: v for v in DBCol(self.metric_target_db_conn, symbol).find_timeseries(timestamps)}
+            return find_polars_all(DBCol(self.metric_target_db_conn, symbol), {"timestamp": {"$gte": timestamps[0], "$lte": timestamps[-1] + timedelta(seconds=1)}}, schema=TRADES_DB_SCHEMA)
 
         def get_timestamps_needed_for_partial_range(partial_range, range_step) -> list:
             timestamps_needed_for_partial_range = {}
 
             for value in partial_range:
-                range_set_values = {*list(range(value - self.range_in_ms + range_step, value + 1, range_step))}
+                unordered_range_set_values = {*list(datetime_range(value - self.range + range_step, value + timedelta(seconds=1), range_step))}
                 if not timestamps_needed_for_partial_range:
-                    timestamps_needed_for_partial_range = range_set_values
+                    timestamps_needed_for_partial_range = unordered_range_set_values
                 else:
-                    timestamps_needed_for_partial_range.update(range_set_values)
+                    timestamps_needed_for_partial_range.update(unordered_range_set_values)
 
-            return [v for v in timestamps_needed_for_partial_range]
+            timestamps_has_list = [v for v in timestamps_needed_for_partial_range]
+            timestamps_has_list.sort()
 
-        range_step = int(self.range_in_ms / self.values_needed_for_metric)
-        values_to_parse = [*range(self.start_ts_plus_range, self.end_ts + 1,
-                                  (self.atomicity_in_ms if self.atomicity_in_ms < range_step else range_step))]
+            return timestamps_has_list
+
+        range_step = self.range / self.values_needed
+        values_to_parse = [*datetime_range(self.start_ts_plus_range, self.end_ts + timedelta(seconds=1), (self.atomicity if self.atomicity < range_step else range_step))]
         range_counter = 0
 
         if not self.metric_validator_db_conn.start_ts:
@@ -103,12 +115,10 @@ class TechnicalIndicator:
                 exit(0)
 
             start_ts, end_ts = partial_range[0], partial_range[-1]
-            #self.metric_db_conn.clear_collections_between(start_ts, end_ts)
+            self.metric_db_conn.clear_collections_between(start_ts, end_ts)
 
-            log_message = (f"metric {self.metric_db_conn.db_name} with start date of "
-                           f"{datetime.fromtimestamp(start_ts / 1000)} and end date of "
-                           f"'{datetime.fromtimestamp(values_to_parse[-1] / 1000)}', dividing "
-                           f"into partial ranges, finishing in '{datetime.fromtimestamp(end_ts / 1000)}' for now.")
+            log_message = (f"metric {self.metric_db_conn.db_name} with start date of {start_ts} and end date of"
+                           f" '{values_to_parse[-1]}', dividing into partial ranges, finishing in '{end_ts}' for now.")
 
             LOG.info(f"Starting to parse {log_message}")
 
@@ -129,18 +139,23 @@ class TechnicalIndicator:
                 for symbol in symbols:
                     timeseries_values = query_timeseries_values(symbol, timestamps_needed_for_partial_range)
                     symbol_metric_values = []
-                    for tf in timeseries_values.keys():
-                        #TODO: Improve this line below is not self explanatory.. its working but not easy to understand.
-                        # Only way I found to parse the correct values for all use cases.
-                        if self.atomicity_in_ms < range_step or (tf % self.atomicity_in_ms) == (tf % range_step):
-                            values_buffer = tf - (range_step * self.values_needed_for_metric)
-                            try:
-                                timeseries_values[values_buffer]
-                            except KeyError:
-                                continue
+                    for tf in partial_range:
+                        a = (timeseries_values.filter((timeseries_values['timestamp'] < tf + timedelta(seconds=1)) & (timeseries_values['timestamp'] > (tf - self.range))))
+                        a = a.filter(a['timestamp'].is_in(a['timestamp'][0:-1:30]))
+                        self.metric_logic(a)
+                        symbol_metric_values.append({TS: 0, 'metric_value': self.metric_logic(partial_timeseries_values)})
+                    for tf, data in list(timeseries_values['metadata']):
+                        # #TODO: Improve this line below is not self explanatory.. its working but not easy to understand.
+                        # # Only way I found to parse the correct values for all use cases.
+                        # if self.atomicity < range_step or (tf % self.atomicity) == (tf % range_step):
+                        #     values_buffer = tf - (range_step * self.values_needed)
+                        #     try:
+                        #         timeseries_values[values_buffer]
+                        #     except KeyError:
+                        #         continue
 
-                            partial_timeseries_values = {metric_tf: timeseries_values[metric_tf] for metric_tf in reversed(range(values_buffer + range_step, tf + range_step, range_step))}
-                            symbol_metric_values.append({TS: tf, 'metric_value': self.metric_logic(partial_timeseries_values)})
+                        partial_timeseries_values = {metric_tf: timeseries_values[metric_tf] for metric_tf in reversed(range(values_buffer + range_step, tf + range_step, range_step))}
+                        symbol_metric_values.append({TS: tf, 'metric_value': self.metric_logic(timeseries_values)})
 
                     getattr(self.metric_db_conn, symbol).insert_many(symbol_metric_values)
 

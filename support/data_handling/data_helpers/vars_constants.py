@@ -1,5 +1,7 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from enum import Enum
+
+from pymongoarrow.schema import Schema
 
 PROGRAM_NAME = "AlgoTrader"
 PACKAGED_PROGRAM_NAME = "Algotrader.py"
@@ -26,10 +28,11 @@ TRADES_CHART_DB = 'trades_chart_db'
 TRADES_CHART_DB_ALL = 'trades_chart_db_all'
 REL_VOLUME_DB_CONTAINING_NAME = 'relative_volume'
 BASE_TRADES_CHART_DB = TRADES_CHART_DB + '_{}_minutes'
-TRADE_DATA_CACHE_TIME_IN_MINUTES = 160
-TRADE_DATA_PYTHON_CACHE_SIZE = 100
+TRADE_DATA_CACHE_TIME_IN_MINUTES = 300
+TRADE_DATA_PYTHON_CACHE_SIZE = 900
 
-
+TRADES_DB_SCHEMA = Schema({"timestamp": datetime, "metadata": {'price': float, 'quantity': float}})
+TRADES_DB_MARKETCAP_SCHEMA = Schema({"timestamp": datetime, "metadata": {'marketcap': float, 'quantity': float}})
 DEEMED_UNTRADEABLE_SYMBOLS = ['USDTIDRT', 'USDTTRY', 'BUSDUSDT', 'USDTRUB', 'USDTBRL', 'USTUSDT',
                               'BNBUSDT', 'TUSDUSDT', 'EURUSDT']  # Symbols that i don't consider tradeable for various reasons.
 NO_LONGER_TRADED_BINANCE_SYMBOLS = ['USDTNGN', 'USDPUSDT', 'WNXMUSDT', 'LOKAUSDT', 'POWRUSDT', 'API3USDT', 'LOKAUSDT',
@@ -51,6 +54,7 @@ TS = "timestamp"
 VALID_END_TS = "valid_end_timestamp"
 PRICE = "price"
 QUANTITY = 'quantity'
+METADATA = 'metadata'
 
 
 class DBQueryOperators(Enum):

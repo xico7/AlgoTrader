@@ -6,6 +6,7 @@ import time
 from datetime import timedelta, datetime
 
 from MongoDB.db_actions import ValidatorDB, InvalidStartTimestamp, TradesChartTimeframes, InvalidFinishTimestamp
+from argparse_func import TRANSFORM_TRADE_DATA_THREAD_NAME, METRICS_PARSER_THREAD_NAME
 from support.data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MINUTES, DEFAULT_PARSE_INTERVAL_TIMEDELTA
 from support.data_handling.data_helpers.vars_constants import PACKAGED_PROGRAM_NAME
 import logging
@@ -42,23 +43,25 @@ def create_run_threads(thread_number, begin_ts, parse_time, algotrader_process_n
         threads.append(threading.Thread(
             target=run_algotrader_process, args=(
                 algotrader_process_name,
-                algotrader_process_args + ['--start-end-timeframe', f'{int(datetime.timestamp(start_end_tf[0]))}', f'{int(datetime.timestamp(start_end_tf[1]))}']
+                algotrader_process_args + ['--start-end-timeframe', f'{int(datetime.timestamp(start_end_tf[0]) * 1000)}', f'{int(datetime.timestamp(start_end_tf[1]) * 1000)}']
             )
         ))
 
     for thread in threads:
         thread.start()
-        time.sleep(5)
+        time.sleep(30)
 
     return threads
 
 
-def create_run_timeframe_chart_threads(thread_number: int = 3):
-    parse_time_minutes = timedelta(minutes=int(ONE_DAY_IN_MINUTES * 2))
+def create_run_timeframe_chart_threads(thread_number: int = 2):
+    PARSE_TIME = int(ONE_DAY_IN_MINUTES * 1)
+    parse_time_minutes = timedelta(minutes=PARSE_TIME)
 
     if not ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts:
-        LOG.error(f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry.")
-        raise InvalidStartTimestamp(f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry.")
+        err_msg = f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry."
+        LOG.error(err_msg)
+        raise InvalidStartTimestamp(err_msg)
 
     if begin_ts := ValidatorDB(TRADES_CHART_DB).finish_ts:
         pass
@@ -69,11 +72,12 @@ def create_run_timeframe_chart_threads(thread_number: int = 3):
         begin_ts = ValidatorDB(TEN_SECS_PARSED_TRADES_DB).start_ts + timedelta(minutes=max([timeframes.value for timeframes in TradesChartTimeframes]))
 
     if ValidatorDB(TEN_SECS_PARSED_TRADES_DB).finish_ts < begin_ts + parse_time_minutes * thread_number:
-        LOG.error(f"Trades from {TEN_SECS_PARSED_TRADES_DB} are still not parsed until the necessary timeframe.")
-        raise InvalidFinishTimestamp(f"Trade data needs a valid {TEN_SECS_PARSED_TRADES_DB} db start timestamp entry.")
+        err_msg = f"Trades from {TEN_SECS_PARSED_TRADES_DB} are still not parsed until the necessary timeframe."
+        LOG.error(err_msg)
+        raise InvalidFinishTimestamp(err_msg)
 
-    return create_run_threads(thread_number, begin_ts, parse_time_minutes, 'transform-trade-data')
+    return create_run_threads(thread_number, begin_ts, parse_time_minutes, TRANSFORM_TRADE_DATA_THREAD_NAME)
 
 
 def create_run_metrics_parser_threads(threads_number, parse_time, metric_db_mapper_name, begin_ts):
-    return create_run_threads(threads_number, begin_ts, parse_time, 'metrics-parser', ['--metric-db-mapper-name', metric_db_mapper_name])
+    return create_run_threads(threads_number, begin_ts, parse_time, METRICS_PARSER_THREAD_NAME, ['--metric-db-mapper-name', metric_db_mapper_name])

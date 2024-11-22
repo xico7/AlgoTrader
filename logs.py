@@ -105,7 +105,7 @@ def setup_logs(verbosity):
         logVerboseFileHandler.setFormatter(logFormat)
         LOG_ssh.addHandler(logVerboseFileHandler)
 
-    LOG.setLevel(worst_log_level)
+    LOG.setLevel(logging.INFO)
 
     def module_in_logs():
         old_factory = logging.getLogRecordFactory()

@@ -8,8 +8,6 @@ import logs
 from support.data_handling.data_structures import SymbolsTimeframeTrade, FundTimeframeTrade
 from support.data_handling.data_helpers.vars_constants import FUND_SYMBOLS_USDT_PAIRS, coingecko_marketcap_api_link
 
-from support.generic_helpers import mins_to_ms
-
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 
@@ -47,10 +45,10 @@ def parse_trades_ten_seconds():
     parse_fund_data = None
     parse_aggtrade = None
     while True:
-        parse_aggtrade = SymbolsTimeframeTrade() if not parse_aggtrade else (
-            SymbolsTimeframeTrade(parse_aggtrade.end_ts + timedelta(minutes=parse_aggtrade.timeframe)))
         parse_fund_data = FundTimeframeTrade(coin_ratio) if not parse_fund_data else (
             FundTimeframeTrade(coin_ratio, parse_fund_data.end_ts + timedelta(minutes=parse_fund_data.timeframe)))
+        parse_aggtrade = SymbolsTimeframeTrade() if not parse_aggtrade else (
+            SymbolsTimeframeTrade(parse_aggtrade.end_ts + timedelta(minutes=parse_aggtrade.timeframe)))
 
         if parse_fund_data.finished and parse_aggtrade.finished:
             LOG.info("Finished parsing ten seconds trades, sleeping for ten minutes.")
@@ -59,7 +57,8 @@ def parse_trades_ten_seconds():
             parse_fund_data.finished = False
             parse_aggtrade.finished = False
         else:
-            if not parse_fund_data.finished:
-                parse_fund_data.parse_and_insert_trades()
             if not parse_aggtrade.finished:
                 parse_aggtrade.parse_and_insert_trades()
+            if not parse_fund_data.finished:
+                parse_fund_data.parse_and_insert_trades()
+

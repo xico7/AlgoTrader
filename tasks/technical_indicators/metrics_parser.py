@@ -1,9 +1,13 @@
 import time
+from datetime import timedelta
+
 from MongoDB.db_actions import DBMapper
 from support.data_handling.data_helpers.vars_constants import ONE_DAY_IN_MS
 from support.threading_helpers import create_run_metrics_parser_threads
 import logs
 import logging
+
+from tasks.technical_indicators.technical_indicators import RelativeVolume
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -13,9 +17,11 @@ LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
 def metrics_parser(args):
     def instanciate_metric_class(metric_db_name):
-        return getattr(DBMapper, metric_db_name).value.metric_class(metric_db_name)
+        metric_details = getattr(DBMapper, metric_db_name).value
+        return metric_details.metric_class(metric_details.metric_db_name, metric_details.metric_target_db_name, metric_details.range, metric_details.values_needed, metric_details.metric_class, metric_details.atomicity)
 
     instantiated_metric_class = instanciate_metric_class(args['metric_db_mapper_name'])
+
     if args['threads_number'] == 1:
         instantiated_metric_class.metric_validator_db_conn.set_timeframe_valid_timestamps(instantiated_metric_class.atomicity)
         if not args['start_end_timeframe']:

@@ -1,5 +1,6 @@
 import logging
 import itertools
+import time
 from datetime import datetime
 import requests
 from requests import ReadTimeout
@@ -49,17 +50,21 @@ def usdt_with_bnb_symbols() -> list:
 def save_aggtrades(args):
     start_ts, end_ts = args['start_ts'], args['end_ts']
 
-    if len(str(start_ts)) != 10 and len(str(end_ts)) != 10:
+    if len(str(start_ts)) != 10 or len(str(end_ts)) != 10:
         LOG.error("Invalid Start timestamp or End timestamp provided, needs to be timestamp in seconds.")
         raise InvalidTimestampProvided("Invalid Start timestamp or End timestamp provided, needs to be timestamp in seconds.")
 
     LOG.info(f"Starting to parse aggtrades from {datetime.fromtimestamp(start_ts)} to {datetime.fromtimestamp(end_ts)}.")
     cache_symbols_parsed = CacheAggtrades(start_ts, end_ts)
+    cache_symbols_parsed.clear_collections()
 
     for symbol in usdt_with_bnb_symbols():
         cache_symbols_parsed.append(symbol, get_next_parse_minutes_trades(symbol, start_ts, end_ts))
-    cache_symbols_parsed.insert_in_db_clear()
+        cache_symbols_parsed.insert_in_db_clear(symbol)
+
+    cache_symbols_parsed.add_done_and_reset()
+
     LOG.info(f"{(end_ts - start_ts) / 60} minutes of aggtrades inserted from {datetime.fromtimestamp(start_ts)} to "
-             f"{datetime.fromtimestamp(end_ts / 1000)}, exiting.")
+             f"{datetime.fromtimestamp(end_ts)}, exiting.")
     exit(0)
 
