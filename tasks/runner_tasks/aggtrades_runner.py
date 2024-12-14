@@ -26,7 +26,7 @@ def create_run_aggtrades_threads(threads_number, begin_ts):
 
 def aggtrades_runner(args):
     if not (begin_ts := DB(PARSED_AGGTRADES_DB).end_ts):
-        begin_ts = datetime.fromtimestamp(1620955600)
+        begin_ts = datetime.fromtimestamp(1700675612)
         AggtradesValidatorDB(PARSED_AGGTRADES_DB).set_start_ts(begin_ts)
     else:
         AggtradesValidatorDB(PARSED_AGGTRADES_DB).set_valid_timestamps()

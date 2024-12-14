@@ -44,7 +44,6 @@ def main():
         elif inspect.iscoroutinefunction(function):
             asyncio.run(async_main(function, args))
         elif args:
-            
             function(args)
         else:
             function()

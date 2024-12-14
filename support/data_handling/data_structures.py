@@ -327,12 +327,16 @@ class Trade:
         end_ts = timestamp + timedelta(minutes=timeframe)
         for symbol in symbols:
             last_valid_timestamp_price = 0
-            trades = find_polars_all(DBCol(PARSED_AGGTRADES_DB, symbol), {TS: {"$gt": start_ts, "$lt": end_ts}}, schema=TRADES_DB_SCHEMA)
-            if not len(trades):
-                last_valid_timestamp_price = get_last_valid_ts_price(last_valid_timestamp_price)
-                for timeseries in datetime_range(start_ts, end_ts, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
-                    self.ts_data[symbol][str(timeseries)] = {PRICE: last_valid_timestamp_price, QUANTITY: 0, TS: timeseries}
-                continue
+            try:
+                trades = find_polars_all(DBCol(PARSED_AGGTRADES_DB, symbol), {TS: {"$gt": start_ts, "$lt": end_ts}}, schema=TRADES_DB_SCHEMA)
+            except ValueError as e:
+                if e.args[0] == 'Schema and number of arrays unequal':  # No trades in this timeslot.
+                    last_valid_timestamp_price = get_last_valid_ts_price(last_valid_timestamp_price)
+                    for timeseries in datetime_range(start_ts, end_ts, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
+                        self.ts_data[symbol][str(timeseries)] = {PRICE: last_valid_timestamp_price, QUANTITY: 0, TS: timeseries}
+                    continue
+                else:
+                    raise
 
             for timeseries in datetime_range(start_ts, end_ts, DEFAULT_PARSE_INTERVAL_TIMEDELTA):
                 ts_trades = trades.filter((pl.col(TS) > timeseries) & (pl.col(TS) < timeseries + timedelta(seconds=10)))

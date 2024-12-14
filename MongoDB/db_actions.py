@@ -12,7 +12,7 @@ from pymongo.errors import CollectionInvalid
 from contextlib import suppress
 
 from support.generic_helpers import get_current_second, mins_to_ms, timedelta_to_ms
-from pymongo import MongoClient, database, cursor
+from pymongo import MongoClient, database, cursor, collection
 import logs
 from support.data_handling.data_helpers.vars_constants import DBQueryOperators, DEFAULT_COL_SEARCH, \
     FINISH_TS_VALIDATOR_DB_SUFFIX, VALIDATOR_DB, START_TS_VALIDATOR_DB_SUFFIX, TEN_SECONDS_IN_MS, \
@@ -26,7 +26,8 @@ from tasks.technical_indicators.technical_indicators import TotalVolume, Technic
 if TYPE_CHECKING:
     from support.data_handling.data_structures import TradeData, TradesChart
 
-localhost = 'mongodb://localhost:27017/'  # if ubuntu can't connect --> Find Ipv4 IP automatically (ps ipconfig.. ipv4)
+# Mongodb config path (Windows) C:\Program Files\MongoDB\Server\7.0\bin  -> '7.0' can change.
+localhost = 'mongodb://127.0.0.1/'  # if ubuntu can't connect --> Find Ipv4 IP automatically (ps ipconfig.. ipv4)
 
 LOG = logging.getLogger(logs.LOG_BASE_NAME + '.' + __name__)
 
@@ -525,7 +526,7 @@ class ValidatorDB(DB, ABC):
             self.set_finish_ts(time_intervals_end_ts[-1])
             LOG.info(f"End_ts ts set to {time_intervals_end_ts[-1]} for db {self.validate_db_name}.")
 
-        #self.done_intervals_ts_collection.delete_all()
+        self.done_intervals_ts_collection.delete_all()
         return True
 
 

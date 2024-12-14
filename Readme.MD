@@ -16,3 +16,10 @@ After this the application zipped to one single executable file and you can run 
 
 For this you just need python 3.10 and run 'python3 AlgoTrader.py' . 
 
+
+
+
+Useful Tips:
+
+How to query MongoDB "manually":
+    - {'timestamp': {"$gt": ISODate("2023-12-07T02:59:32.000Z"), "$lt": ISODate("2023-12-07T03:00:32.000Z")}}
