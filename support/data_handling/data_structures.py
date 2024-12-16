@@ -124,7 +124,6 @@ class CacheTradesChartData(dict):
         begin_ts = self._cache_db[1].timestamp
         end_ts = self._cache_db[len(self._cache_db)].timestamp
 
-        self.db_conn.clear_collections_between(begin_ts, end_ts)
         symbols = list(self._cache_db[1].symbols_data_group.keys())
         insert_in_db = {symbol: [] for symbol in list(self._cache_db[1].symbols_data_group.keys())}
         for trade_data_group in self._cache_db.values():
