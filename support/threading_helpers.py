@@ -5,9 +5,11 @@ import threading
 import time
 from datetime import timedelta, datetime
 
-from MongoDB.db_actions import ValidatorDB, InvalidStartTimestamp, TradesChartTimeframes, InvalidFinishTimestamp
+from MongoDB.db_actions import ValidatorDB, InvalidStartTimestamp, TradesChartTimeframes, InvalidFinishTimestamp, \
+    TRADES_CHART_TIMEFRAMES_VALUES, DB
 from argparse_func import TRANSFORM_TRADE_DATA_THREAD_NAME, METRICS_PARSER_THREAD_NAME
-from support.data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECS_PARSED_TRADES_DB, ONE_DAY_IN_MINUTES, DEFAULT_PARSE_INTERVAL_TIMEDELTA
+from support.data_handling.data_helpers.vars_constants import TRADES_CHART_DB, TEN_SECS_PARSED_TRADES_DB, \
+    ONE_DAY_IN_MINUTES, DEFAULT_PARSE_INTERVAL_TIMEDELTA, BASE_TRADES_CHART_DB
 from support.data_handling.data_helpers.vars_constants import PACKAGED_PROGRAM_NAME
 import logging
 import logs
@@ -75,6 +77,11 @@ def create_run_timeframe_chart_threads(thread_number: int = 2):
         err_msg = f"Trades from {TEN_SECS_PARSED_TRADES_DB} are still not parsed until the necessary timeframe."
         LOG.error(err_msg)
         raise InvalidFinishTimestamp(err_msg)
+
+    LOG.info("Deleting leftover trade data from previous stopped runs, this process can take a long time.")
+    for timeframe in TRADES_CHART_TIMEFRAMES_VALUES:
+        DB(BASE_TRADES_CHART_DB.format(timeframe)).clear_collections_between(begin_ts, begin_ts + parse_time_minutes)
+    LOG.info("Finished deleting leftover trade data from previous stopped runs.")
 
     return create_run_threads(thread_number, begin_ts, parse_time_minutes, TRANSFORM_TRADE_DATA_THREAD_NAME)
 

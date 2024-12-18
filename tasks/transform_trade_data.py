@@ -45,11 +45,6 @@ def transform_trade_data(args):
     symbols_timeframe_trades = {}
     cache_db_insert = {timeframe: CacheTradesChartData(timeframe) for timeframe in TRADES_CHART_TIMEFRAMES_VALUES}
 
-    LOG.info("Deleting leftover trade data from previous stopped runs, this process can take a long time.")
-    for db in cache_db_insert.values():
-        db.db_conn.clear_collections_between(begin_ts, finish_ts)
-    LOG.info("Finished deleting leftover trade data from previous stopped runs.")
-
     parsing_ts = begin_ts
     maximum_atomicity_timeframe = max([trade_chart_atomicity.value.atomicity for trade_chart_atomicity in TradesChartTimeframeValuesAtomicity])
     while parsing_ts <= finish_ts:
